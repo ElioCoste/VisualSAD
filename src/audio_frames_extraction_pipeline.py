@@ -16,7 +16,7 @@ class Extractor:
             os.makedirs(os.path.join(self.DATASET_DIR, m, "frames"), exist_ok=True)
 
     def extract_audio(self, input_video, output_audio):
-        command = (f"ffmpeg -y -i {input_video} -async 1 -ac 1 -vn -acodec pcm_s16le -ar 16000 {output_audio}")
+        command = (f"ffmpeg -y -i {input_video} -async 1 -ac 1 -vn -acodec pcm_s16le -ar 16000 -threads 4 {output_audio} -loglevel panic")
         subprocess.call(command, shell=True, stdout=None)
         
     def standardize_frames(self, input_video, output_video):
