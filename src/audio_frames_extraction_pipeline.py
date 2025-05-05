@@ -9,11 +9,16 @@ from tqdm import tqdm
 class Extractor:
     def __init__(self):
         self.DATASET_DIR = os.path.join(Path.cwd().parent, "data")
+        self.VIDEO_DIR = os.path.join(self.DATASET_DIR, "videos")
+        self.AUDIO_DIR = os.path.join(self.DATASET_DIR, "audio")
+        self.FRAMES_DIR = os.path.join(self.DATASET_DIR, "frames")
+        os.makedirs(self.AUDIO_DIR, exist_ok=True)
+        os.makedirs(self.FRAMES_DIR, exist_ok=True)
         
         self.modes = ["train", "val"]
         for m in self.modes:
-            os.makedirs(os.path.join(self.DATASET_DIR, m, "audio"), exist_ok=True)
-            os.makedirs(os.path.join(self.DATASET_DIR, m, "frames"), exist_ok=True)
+            os.makedirs(os.path.join(self.AUDIO_DIR, m), exist_ok=True)
+            os.makedirs(os.path.join(self.FRAMES_DIR, m), exist_ok=True)
 
     def extract_audio(self, input_video, output_audio):
         command = (f"ffmpeg -y -i {input_video} -async 1 -ac 1 -vn -acodec pcm_s16le -ar 16000 -threads 4 {output_audio} -loglevel panic")
@@ -31,20 +36,21 @@ def main():
     extractor = Extractor()
     
     for m in extractor.modes:
-        video_names = os.listdir(os.path.join(extractor.DATASET_DIR, m, "videos"))[:5]
+        video_dir = os.path.join(extractor.DATASET_DIR, "videos", m)
+        video_names = os.listdir(video_dir)[:5]
         print(video_names)
         for video in tqdm(video_names):
-            input_video = os.path.join(extractor.DATASET_DIR, m, "videos", video)
+            input_video = os.path.join(video_dir, video)
             video_id = video.split(".")[0]
             
-            output_audio = os.path.join(extractor.DATASET_DIR, m, "audio", video_id + ".wav")
+            output_audio = os.path.join(extractor.DATASET_DIR, "audio", m, video_id + ".wav")
             
             if os.path.exists(output_audio):
                 print(f"Audio file {output_audio} already exists. Skipping extraction.")
             else:
                 extractor.extract_audio(input_video, output_audio)
                 
-            frames_dir = os.path.join(extractor.DATASET_DIR, m, "frames", video_id)
+            frames_dir = os.path.join(extractor.DATASET_DIR, "frames", m, video_id)
             os.makedirs(frames_dir, exist_ok=True)
             output_frames = os.path.join(frames_dir, "img_%06d.jpg")
             if os.path.exists(frames_dir) and len(os.listdir(frames_dir)) > 0:
@@ -52,9 +58,5 @@ def main():
             else: 
                 extractor.extract_frames(input_video, output_frames)
             
-            
-            
-            
-
 if __name__ == '__main__':
     main()

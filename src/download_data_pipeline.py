@@ -9,15 +9,18 @@ from tqdm import tqdm
 class AVADataset():
     def __init__(self):
         self.DATASET_DIR = os.path.join(Path.cwd().parent, "data")
+        self.VIDEO_DIR = os.path.join(self.DATASET_DIR, "videos")
+        os.makedirs(self.VIDEO_DIR, exist_ok=True)
 
         # Create the train and validation directories if they don't exist
-        self.TRAIN_DIR = os.path.join(self.DATASET_DIR, "train")
-        self.VAL_DIR = os.path.join(self.DATASET_DIR, "val")
+        self.TRAIN_DIR = os.path.join(self.VIDEO_DIR, "train")
+        self.VAL_DIR = os.path.join(self.VIDEO_DIR, "val")
+        os.makedirs(self.TRAIN_DIR, exist_ok=True)
+        os.makedirs(self.VAL_DIR, exist_ok=True)
         
-        self.TRAIN_VIDEO = os.path.join(self.TRAIN_DIR, "videos")
-        self.VAL_VIDEO = os.path.join(self.VAL_DIR, "videos")
-        os.makedirs(self.TRAIN_VIDEO, exist_ok=True)
-        os.makedirs(self.TRAIN_VIDEO, exist_ok=True)
+        self.ANNOTATIONS_DIR = os.path.join(self.DATASET_DIR, "annotations")
+        self.ANNOTATIONS_TRAIN = os.path.join(self.ANNOTATIONS_DIR, "train")
+        self.ANNOTATIONS_VAL = os.path.join(self.ANNOTATIONS_DIR, "val")
 
         self.TRAIN_IDS = []
         self.VAL_IDS = []
@@ -28,8 +31,8 @@ class AVADataset():
         """
         Get the training and validation IDs from the AVA dataset
         """
-        self.TRAIN_IDS = os.listdir(os.path.join(self.TRAIN_DIR, "annotations"))
-        self.VAL_IDS = os.listdir(os.path.join(self.VAL_DIR, "annotations"))
+        self.TRAIN_IDS = os.listdir(self.ANNOTATIONS_TRAIN)
+        self.VAL_IDS = os.listdir(self.ANNOTATIONS_VAL)
         self.TRAIN_IDS = list(map(lambda x: x.split("-activespeaker")[0], self.TRAIN_IDS))
         self.VAL_IDS = list(map(lambda x: x.split("-activespeaker")[0], self.VAL_IDS))
         print(f"Number of training files: {len(self.TRAIN_IDS)}")
@@ -67,14 +70,14 @@ class AVADataset():
         
     def download_file(self, filename):
         url = f'https://s3.amazonaws.com/ava-dataset/trainval/{filename}'
-        if os.path.isfile(os.path.join(self.TRAIN_VIDEO, filename)) or os.path.isfile(os.path.join(self.VAL_VIDEO, filename)):
+        if os.path.isfile(os.path.join(self.TRAIN_DIR, filename)) or os.path.isfile(os.path.join(self.VAL_DIR, filename)):
             print(f"File {filename} already exists. Skipping.")
         else:
             r = requests.get(url, allow_redirects=True)
             if filename.split(".")[0] in self.TRAIN_IDS:
-                open(os.path.join(self.TRAIN_VIDEO, filename), 'wb').write(r.content)
+                open(os.path.join(self.TRAIN_DIR, filename), 'wb').write(r.content)
             elif filename.split(".")[0] in self.VAL_IDS:
-                open(os.path.join(self.VAL_VIDEO, filename), 'wb').write(r.content)
+                open(os.path.join(self.VAL_DIR, filename), 'wb').write(r.content)
             else:
                 print(f"File ID {filename.split('.')[0]} not found in training or validation list.")
             
