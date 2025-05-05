@@ -1,6 +1,5 @@
-data/train/audio
-data/train/frames
-data/train/videos
-data/val/audio
-data/val/frames
-data/val/videos
+data/orig_audios
+data/frames
+data/orig_videos
+data/clips_audios
+data/clips_videos
