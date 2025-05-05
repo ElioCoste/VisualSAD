@@ -18,7 +18,7 @@ class AVADataset():
         os.makedirs(self.TRAIN_DIR, exist_ok=True)
         os.makedirs(self.VAL_DIR, exist_ok=True)
         
-        self.ANNOTATIONS_DIR = os.path.join(self.DATASET_DIR, "annotations")
+        self.ANNOTATIONS_DIR = os.path.join(self.DATASET_DIR, "csv")
         self.ANNOTATIONS_TRAIN = os.path.join(self.ANNOTATIONS_DIR, "train")
         self.ANNOTATIONS_VAL = os.path.join(self.ANNOTATIONS_DIR, "val")
 
