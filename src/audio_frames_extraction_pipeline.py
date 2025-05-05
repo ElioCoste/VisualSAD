@@ -42,21 +42,21 @@ def main():
     extractor = Extractor()
     
     for m in extractor.modes:
-        video_dir = os.path.join(extractor.DATASET_DIR, "videos", m)
+        video_dir = os.path.join(extractor.VIDEO_DIR, m)
         video_names = os.listdir(video_dir)[:5]
         print(video_names)
         for video in tqdm(video_names):
             input_video = os.path.join(video_dir, video)
             video_id = video.split(".")[0]
             
-            output_audio = os.path.join(extractor.DATASET_DIR, "audio", m, video_id + ".wav")
+            output_audio = os.path.join(extractor.AUDIO_DIR, m, video_id + ".wav")
             
             if os.path.exists(output_audio):
                 print(f"Audio file {output_audio} already exists. Skipping extraction.")
             else:
                 extractor.extract_audio(input_video, output_audio)
                 
-            frames_dir = os.path.join(extractor.DATASET_DIR, "frames", m, video_id)
+            frames_dir = os.path.join(extractor.FRAMES_DIR, m, video_id)
             os.makedirs(frames_dir, exist_ok=True)
             output_frames = os.path.join(frames_dir, "img_%06d.jpg")
             if os.path.exists(frames_dir) and len(os.listdir(frames_dir)) > 0:
