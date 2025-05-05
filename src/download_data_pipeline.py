@@ -9,7 +9,7 @@ from tqdm import tqdm
 class AVADataset():
     def __init__(self):
         self.DATASET_DIR = os.path.join(Path.cwd().parent, "data")
-        self.VIDEO_DIR = os.path.join(self.DATASET_DIR, "videos")
+        self.VIDEO_DIR = os.path.join(self.DATASET_DIR, "orig_videos")
         os.makedirs(self.VIDEO_DIR, exist_ok=True)
 
         # Create the train and validation directories if they don't exist

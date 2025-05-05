@@ -9,16 +9,22 @@ from tqdm import tqdm
 class Extractor:
     def __init__(self):
         self.DATASET_DIR = os.path.join(Path.cwd().parent, "data")
-        self.VIDEO_DIR = os.path.join(self.DATASET_DIR, "videos")
-        self.AUDIO_DIR = os.path.join(self.DATASET_DIR, "audio")
+        self.VIDEO_DIR = os.path.join(self.DATASET_DIR, "orig_videos")
+        self.AUDIO_DIR = os.path.join(self.DATASET_DIR, "orig_audios")
         self.FRAMES_DIR = os.path.join(self.DATASET_DIR, "frames")
+        self.VIDEO_CLIPS_DIR = os.path.join(self.DATASET_DIR, "clips_videos")
+        self.AUDIO_CLIPS_DIR = os.path.join(self.DATASET_DIR, "clips_audios")
         os.makedirs(self.AUDIO_DIR, exist_ok=True)
         os.makedirs(self.FRAMES_DIR, exist_ok=True)
+        os.makedirs(self.AUDIO_CLIPS_DIR, exist_ok=True)
+        os.makedirs(self.VIDEO_CLIPS_DIR, exist_ok=True)
         
         self.modes = ["train", "val"]
         for m in self.modes:
             os.makedirs(os.path.join(self.AUDIO_DIR, m), exist_ok=True)
             os.makedirs(os.path.join(self.FRAMES_DIR, m), exist_ok=True)
+            os.makedirs(os.path.join(self.AUDIO_CLIPS_DIR, m), exist_ok=True)
+            os.makedirs(os.path.join(self.VIDEO_CLIPS_DIR, m), exist_ok=True)
 
     def extract_audio(self, input_video, output_audio):
         command = (f"ffmpeg -y -i {input_video} -async 1 -ac 1 -vn -acodec pcm_s16le -ar 16000 -threads 4 {output_audio} -loglevel panic")
