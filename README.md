@@ -5,34 +5,35 @@ It automates the data acquisition and preprocessing steps needed for experiments
 
 ## Repository Structure
 
+```plaintext
 data/
-├── train/
-│ ├── annotations/
-│ ├── audio/
-│ ├── frames/
-│ └── videos/
+├─── train/
+│  ├── annotations/
+│  ├── audio/
+│  ├── frames/
+│  └── videos/
 |
-├── val/
-│ ├── annotations/
-│ ├── audio/
-│ ├── frames/
-│ └── videos/
+├─── val/
+│  ├── annotations/
+│  ├── audio/
+│  ├── frames/
+│  └── videos/
 |
-├── ava_speech_file_names_v1.txt
-├── dataset_description.md
+├─── ava_speech_file_names_v1.txt
+├─── dataset_description.md
 |
 papers/
 |
 src/
-├── download_data_pipeline.py
-├── audio_frames_extraction_pipeline.py
+├─── download_data_pipeline.py
+├─── audio_frames_extraction_pipeline.py
+```
 
 
 ## Prerequisites
 
 Before running the scripts, ensure the following:
 
-- Python 3.9+
 - [FFmpeg](https://ffmpeg.org/) must be installed and available in your system's PATH.
 
 You can check if FFmpeg is installed by running:
