@@ -53,14 +53,16 @@ cd VisualSAD
 2. **Download the dataset:**
 
 ```bash
-python src/download_data_pipeline.py
+cd src
+python download_data_pipeline.py
 ```
 This will automatically download the necessary AVA-Speech data and create the required folder structure.
 
 3. **Run the audio and frames extraction pipeline:**
 
 ```bash
-python src/audio_frames_extraction_pipeline.py
+cd src
+python audio_frames_extraction_pipeline.py
 ```
 This script will extract audio and frames from the downloaded videos and save them in the appropriate directories.
 
