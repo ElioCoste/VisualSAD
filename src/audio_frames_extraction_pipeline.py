@@ -26,14 +26,23 @@ class Extractor:
             os.makedirs(os.path.join(self.VIDEO_CLIPS_DIR, m), exist_ok=True)
 
     def extract_audio(self, input_video, output_audio):
+        """
+        Extract audio from video using ffmpeg
+        """
         command = (f"ffmpeg -y -i {input_video} -async 1 -ac 1 -vn -acodec pcm_s16le -ar 16000 -threads 4 {output_audio} -loglevel panic")
         subprocess.call(command, shell=True, stdout=None)
         
     def standardize_frames(self, input_video, output_video):
+        """
+        Standardize the video frames using ffmpeg
+        """
         command = (f'ffmpeg -i {input_video} -vf "scale=640:480,fps=30" -c:v libx264 -crf 23 {output_video}')
         subprocess.call(command, shell=True, stdout=None)
         
     def extract_frames(self, input_video, output_frames):
+        """
+        Extract frames from video using ffmpeg
+        """
         command = (f"ffmpeg -i {input_video} -vf fps=20 -q:v 2 {output_frames}")
         subprocess.call(command, shell=True, stdout=None)
         

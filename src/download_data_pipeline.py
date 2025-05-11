@@ -37,14 +37,18 @@ class AVADataset:
         print(f"Number of training files: {len(self.TRAIN_IDS)}")
         print(f"Number of validation files: {len(self.VAL_IDS)}")
 
-    # Read the file IDs from the text file
     def read_file_ids(self, path="ava_speech_file_names_v1.txt"):
+        """
+        Read the file IDs from the text file
+        """
         with open(os.path.join(self.DATASET_DIR, path), "r") as f:
             self.FILE_NAMES = list(map(lambda line: line.strip(), f.readlines()))
             self.FILE_IDS = list(map(lambda line: line.split(".")[0], self.FILE_NAMES))
             
     def get_dataset_statistics(self):
-        # Check if the file IDs are in the training and validation lists
+        """
+        Check if the file IDs are in the training and validation lists
+        """
         nb_file_not_found = 0
         for file_id in self.FILE_IDS:
             if file_id not in self.TRAIN_IDS and file_id not in self.VAL_IDS:
@@ -68,6 +72,9 @@ class AVADataset:
         print(f"Number of validation files not found: {nb_val_file_not_found}")
         
     def download_file(self, filename):
+        """
+        Download the file from the AVA dataset with the given filename
+        """
         url = f'https://s3.amazonaws.com/ava-dataset/trainval/{filename}'
         if os.path.isfile(os.path.join(self.TRAIN_DIR, filename)) or os.path.isfile(os.path.join(self.VAL_DIR, filename)):
             print(f"File {filename} already exists. Skipping.")
