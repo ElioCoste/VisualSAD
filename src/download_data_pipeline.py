@@ -1,4 +1,3 @@
-import argparse
 import os
 from pathlib import Path
 
@@ -6,7 +5,7 @@ import requests
 from tqdm import tqdm
 
 
-class AVADataset():
+class AVADataset:
     def __init__(self):
         self.DATASET_DIR = os.path.join(Path.cwd().parent, "data")
         self.VIDEO_DIR = os.path.join(self.DATASET_DIR, "orig_videos")
