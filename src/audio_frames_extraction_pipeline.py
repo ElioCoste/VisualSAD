@@ -54,12 +54,10 @@ class Extractor:
         if use_subset:
             with open(os.path.join(self.annotations_dir, f"{mode}_subset_file_list.txt"), "r") as f:
                 file_names = list(map(lambda line: line.strip(), f.readlines()))
-                print(file_names)
             file_ids = list(map(lambda x: x.split(".")[0], file_names))
             # Drop the rows where video id is not in the subset
             df = df[df['video_id'].isin(file_ids)]
         
-        print("length of the dataframe:", len(df))
         df_neg = pd.concat([df[df['label_id'] == 0], df[df['label_id'] == 2]])
         df_pos = df[df['label_id'] == 1]
         df = pd.concat([df_pos, df_neg]).reset_index(drop=True)
@@ -82,7 +80,6 @@ class Extractor:
         ins_dir = os.path.join(output_dir, mode, video_key)
         os.makedirs(ins_dir, exist_ok=True)
         ins_path = os.path.join(ins_dir, f'{entity_id}.wav')
-        print(ins_path)
         if os.path.exists(ins_path):
             print(f"Audio clips {ins_path} already exists. Skipping extraction.")
         else:
@@ -150,7 +147,6 @@ def main(use_subset, extract_full_frames):
         
         print("Extracting audio and video clips for mode:", m)
         df, entity_list = extractor.create_annotations_df(m, use_subset)
-        print(len(entity_list))
         for entity in tqdm(entity_list):
             extractor.extract_audio_clips(entity, df, m, output_dir=extractor.audio_clips_dir, input_dir=extractor.audio_dir)
             extractor.extract_video_clips(entity, df, m, output_dir=extractor.video_clips_dir, input_dir=extractor.video_dir)
