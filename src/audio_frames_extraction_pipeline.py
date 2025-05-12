@@ -80,6 +80,7 @@ class Extractor:
         ins_dir = os.path.join(output_dir, mode, video_key)
         os.makedirs(ins_dir, exist_ok=True)
         ins_path = os.path.join(ins_dir, f'{entity_id}.wav')
+        print(ins_path)
         if os.path.exists(ins_path):
             print(f"Audio clips {ins_path} already exists. Skipping extraction.")
         else:

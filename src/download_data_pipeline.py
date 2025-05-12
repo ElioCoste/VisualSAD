@@ -15,7 +15,6 @@ class AVADataset:
         os.makedirs(self.video_dir, exist_ok=True)
         
         self.modes = ["train", "val", "test"]
-        self.conversion_mode = {"train": "trainval", "val": "trainval", "test": "test"}
 
         # Create the train, validation and test directories if they don't exist
         for mode in self.modes:
@@ -94,14 +93,16 @@ class AVADataset:
         Download the file from the AVA dataset with the given filename
         """
         if mode == "train" or mode == "val":
-            mode = "trainval"
-        url = f'https://s3.amazonaws.com/ava-dataset/{mode}/{filename}'
+            dl_mode = "trainval"
+        else:
+            dl_mode = "test"
+        url = f'https://s3.amazonaws.com/ava-dataset/{dl_mode}/{filename}'
         if os.path.isfile(os.path.join(self.video_dir, mode, filename)):
             print(f"File {filename} already exists. Skipping.")
         else:
             r = requests.get(url, allow_redirects=True)
-            if filename in self.file_names[self.conversion_mode[mode]]:
-                open(os.path.join(self.video_dir, self.conversion_mode[mode], filename), 'wb').write(r.content)
+            if filename in self.file_names[mode]:
+                open(os.path.join(self.video_dir, mode, filename), 'wb').write(r.content)
             else:
                 print(f"File ID {filename.split('.')[0]} not found in list.")
             
