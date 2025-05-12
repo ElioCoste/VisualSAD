@@ -31,8 +31,6 @@ class Extractor:
             os.makedirs(os.path.join(self.frames_dir, m), exist_ok=True)
             os.makedirs(os.path.join(self.audio_clips_dir, m), exist_ok=True)
             os.makedirs(os.path.join(self.video_clips_dir, m), exist_ok=True)
-        
-        self.files_names = dict.fromkeys(self.modes)
 
     def extract_audio(self, input_video, output_audio):
         """
@@ -55,9 +53,10 @@ class Extractor:
         df = pd.read_csv(os.path.join(self.annotations_dir, f"{mode}_orig.csv"))
         if use_subset:
             with open(os.path.join(self.annotations_dir, f"{mode}_subset_file_list.txt"), "r") as f:
-                self.file_names[mode] = list(map(lambda line: line.strip(), f.readlines()))
+                file_names = list(map(lambda line: line.strip(), f.readlines()))
+            file_ids = list(map(lambda x: x.split(".")[0], file_names))
             # Drop the rows where video id is not in the subset
-            df = df[df['video_id'].isin(self.file_names[mode])]
+            df = df[df['video_id'].isin(file_ids)]
         
         df_neg = pd.concat([df[df['label_id'] == 0], df[df['label_id'] == 2]])
         df_pos = df[df['label_id'] == 1]
@@ -78,7 +77,9 @@ class Extractor:
         start = ins_data.iloc[0]['frame_timestamp']
         end = ins_data.iloc[-1]['frame_timestamp']
         entity_id = ins_data.iloc[0]['entity_id']
-        ins_path = os.path.join(output_dir, mode, video_key, entity_id+'.wav')
+        ins_dir = os.path.join(output_dir, mode, video_key)
+        os.makedirs(ins_dir, exist_ok=True)
+        ins_path = os.path.join(ins_dir, f'{entity_id}.wav')
         if os.path.exists(ins_path):
             print(f"Audio clips {ins_path} already exists. Skipping extraction.")
         else:
@@ -99,9 +100,10 @@ class Extractor:
         video_key = ins_data.iloc[0]['video_id']
         video_file = glob.glob(os.path.join(input_dir, mode, '{}.*'.format(video_key)))[0]
         V = cv2.VideoCapture(video_file)
+        ins_dir = os.path.join(os.path.join(output_dir, video_key, entity))
         j = 0
         for _, row in ins_data.iterrows():
-            image_filename = os.path.join(output_dir, mode, str("%.2f"%row['frame_timestamp'])+'.jpg')
+            image_filename = os.path.join(ins_dir, str("%.2f"%row['frame_timestamp'])+'.jpg')
             if os.path.exists(image_filename):
                 print(f"Image clips {image_filename} already exists. Skipping extraction.")
             else:
@@ -117,7 +119,7 @@ class Extractor:
                 j = j+1
                 cv2.imwrite(image_filename, face)
         
-def main(use_subset):
+def main(use_subset, extract_full_frames):
     extractor = Extractor()
     
     for m in extractor.modes:
@@ -134,25 +136,29 @@ def main(use_subset):
             else:
                 extractor.extract_audio(input_video, output_audio)
                 
-            frames_dir = os.path.join(extractor.frames_dir, m, video_id)
-            os.makedirs(frames_dir, exist_ok=True)
-            output_frames = os.path.join(frames_dir, "img_%06d.jpg")
-            if os.path.exists(frames_dir) and len(os.listdir(frames_dir)) > 0:
-                print(f"Frames for {video} already exist. Skipping extraction.")
-            else: 
-                extractor.extract_frames(input_video, output_frames)
+            if extract_full_frames:
+                frames_dir = os.path.join(extractor.frames_dir, m, video_id)
+                os.makedirs(frames_dir, exist_ok=True)
+                output_frames = os.path.join(frames_dir, "img_%06d.jpg")
+                if os.path.exists(frames_dir) and len(os.listdir(frames_dir)) > 0:
+                    print(f"Frames for {video} already exist. Skipping extraction.")
+                else: 
+                    extractor.extract_frames(input_video, output_frames)
         
+        print("Extracting audio and video clips for mode:", m)
         df, entity_list = extractor.create_annotations_df(m, use_subset)
         for entity in tqdm(entity_list):
-            extractor.extract_audio_clips(entity, df, m, extractor.audio_clips_dir, extractor.audio_dir)
-            extractor.extract_video_clips(entity, df, m, extractor.video_clips_dir, extractor.video_dir)
+            extractor.extract_audio_clips(entity, df, m, output_dir=extractor.audio_clips_dir, input_dir=extractor.audio_dir)
+            extractor.extract_video_clips(entity, df, m, output_dir=extractor.video_clips_dir, input_dir=extractor.video_dir)
             
 if __name__ == '__main__':
     argparse = argparse.ArgumentParser(description="Extract audio and frames from videos")
-    argparse.add_argument('--use_subset', action='store_true', help="Use subset of the dataset")
+    argparse.add_argument('--use_subset', action='store_true', default=True, help="Use subset of the dataset")
+    argparse.add_argument('--extract_full_frames', action='store_true', default=False, help="Extract full frames from videos")
     
     args = argparse.parse_args()
     
     use_subset = args.use_subset
+    extract_full_frames = args.extract_full_frames
     
-    main(use_subset)
+    main(use_subset, extract_full_frames)
