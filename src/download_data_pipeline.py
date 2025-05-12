@@ -22,19 +22,19 @@ class AVADataset:
         
         self.annotations_dir = os.path.join(self.dataset_dir, "csv")
 
-        self.video_ids = dict.fromkeys(self.modes)
-        self.file_names = dict.fromkeys(self.modes, [])
-        self.file_ids = dict.fromkeys(self.modes, [])
+        self.csv_ids = dict.fromkeys(self.modes)
+        self.file_names = dict.fromkeys(self.modes)
+        self.file_ids = dict.fromkeys(self.modes)
         
     def get_intersection(self):
         """
         Get the intersection of the file IDs and video IDs
         """
         for mode in self.modes:
-            self.file_ids[mode] = list(set(self.file_ids[mode]) & set(self.video_ids[mode]))
+            self.file_ids[mode] = list(set(self.file_ids[mode]) & set(self.csv_ids[mode]))
             new_file_names = []
             for i in range(len(self.file_names[mode])):
-                if self.file_names[mode][i].split(".")[0] not in self.file_ids[mode]:
+                if self.file_names[mode][i].split(".")[0] in self.file_ids[mode]:
                     new_file_names.append(self.file_names[mode][i])
             self.file_names[mode] = new_file_names
         
@@ -60,14 +60,14 @@ class AVADataset:
                     for name in subset_names_list[mode]:
                         f.write(name + "\n")
 
-    def get_video_ids(self):
+    def get_csv_ids(self):
         """
         Get the training and validation IDs from the AVA dataset
         """
         df_dict = dict.fromkeys(self.modes)
         for mode in self.modes:
             df_dict[mode] = pd.read_csv(os.path.join(self.annotations_dir, f"{mode}_orig.csv"))
-            self.video_ids[mode] = df_dict[mode]['video_id'].unique().tolist()
+            self.csv_ids[mode] = df_dict[mode]['video_id'].unique().tolist()
 
     def read_file_ids(self, mode):
         """
@@ -75,13 +75,17 @@ class AVADataset:
         """
         with open(os.path.join(self.annotations_dir, f'{mode}_file_list.txt'), "r") as f:
             if mode == "trainval":
+                self.file_names["train"] = []
+                self.file_names["val"] = []
+                self.file_ids["train"] = []
+                self.file_ids["val"] = []
                 trainval_names = list(map(lambda line: line.strip(), f.readlines()))
                 trainval_ids = list(map(lambda line: line.split(".")[0], trainval_names))
                 for i in range(len(trainval_ids)):
-                    if trainval_ids[i] in self.video_ids["train"]:
+                    if trainval_ids[i] in self.csv_ids["train"]:
                         self.file_ids["train"].append(trainval_ids[i])
                         self.file_names["train"].append(trainval_names[i])
-                    elif trainval_ids[i] in self.video_ids["val"]:
+                    elif trainval_ids[i] in self.csv_ids["val"]:
                         self.file_ids["val"].append(trainval_ids[i])
                         self.file_names["val"].append(trainval_names[i])
             else:
@@ -122,13 +126,13 @@ def main(use_subset=True, subset_exists=False, train_subset=20, val_subset=10, t
     subset_nb = {"train": train_subset, "val": val_subset, "test": test_subset}
     
     dataset = AVADataset()
-    dataset.get_video_ids()
+    dataset.get_csv_ids()
     if subset_exists:
         dataset.get_subset(subset_nb=None, subset_exists=subset_exists)
     else:
         dataset.read_file_ids("trainval")
         dataset.read_file_ids("test")
-        dataset.get_intersection = dataset.get_intersection()
+        dataset.get_intersection()
         if use_subset:
             dataset.get_subset(subset_nb=subset_nb, subset_exists=subset_exists)
         
@@ -138,9 +142,9 @@ if __name__ == "__main__":
     argparse = argparse.ArgumentParser(description="Download AVA dataset")
     argparse.add_argument("--use_subset", type=bool, default=True, help="Use subset of the dataset")
     argparse.add_argument("--subset_exists", type=bool, default=False, help="Use existing subset of the dataset")
-    argparse.add_argument("--train_subset", type=int, default=20, help="Number of training samples")
-    argparse.add_argument("--val_subset", type=int, default=10, help="Number of validation samples")
-    argparse.add_argument("--test_subset", type=int, default=5, help="Number of test samples")
+    argparse.add_argument("--train_subset", type=int, default=2, help="Number of training samples")
+    argparse.add_argument("--val_subset", type=int, default=2, help="Number of validation samples")
+    argparse.add_argument("--test_subset", type=int, default=2, help="Number of test samples")
     
     args = argparse.parse_args()
     
