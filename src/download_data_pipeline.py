@@ -24,13 +24,26 @@ class AVADataset:
         self.annotations_dir = os.path.join(self.dataset_dir, "csv")
 
         self.video_ids = dict.fromkeys(self.modes)
-        self.file_names = dict.fromkeys(self.modes)
-        self.file_ids = dict.fromkeys(self.modes)
+        self.file_names = dict.fromkeys(self.modes, [])
+        self.file_ids = dict.fromkeys(self.modes, [])
+        
+    def get_intersection(self):
+        """
+        Get the intersection of the file IDs and video IDs
+        """
+        for mode in self.modes:
+            self.file_ids[mode] = list(set(self.file_ids[mode]) & set(self.video_ids[mode]))
+            new_file_names = []
+            for i in range(len(self.file_names[mode])):
+                if self.file_names[mode][i].split(".")[0] not in self.file_ids[mode]:
+                    new_file_names.append(self.file_names[mode][i])
+            self.file_names[mode] = new_file_names
         
     def get_subset(self, subset_nb, subset_exists=False):
         """
         Get the subset of the AVA dataset
         """
+        print("Getting subset of the AVA dataset...")
         if subset_exists:
             self.file_names = dict.fromkeys(self.modes)
             for mode in self.modes:
@@ -38,10 +51,9 @@ class AVADataset:
                     self.file_names[mode] = list(map(lambda line: line.strip(), f.readlines()))
                     self.file_ids[mode] = list(map(lambda line: line.split(".")[0], self.file_names[mode]))
         else:
-            random.seed(42)
             subset_names_list = dict.fromkeys(self.modes)
             for mode in self.modes:
-                subset_names_list[mode] = random.choices(self.file_names[mode], sample=subset_nb[mode])
+                subset_names_list[mode] = random.choices(self.file_names[mode], k=subset_nb[mode])
                 self.file_names[mode] = subset_names_list[mode]
                 self.file_ids[mode] = list(map(lambda line: line.split(".")[0], subset_names_list[mode]))
                 # Write the subset to a text file
@@ -64,8 +76,8 @@ class AVADataset:
         """
         with open(os.path.join(self.annotations_dir, f'{mode}_file_list.txt'), "r") as f:
             if mode == "trainval":
-                trainval_ids = list(map(lambda line: line.split(".")[0], self.file_names))
                 trainval_names = list(map(lambda line: line.strip(), f.readlines()))
+                trainval_ids = list(map(lambda line: line.split(".")[0], trainval_names))
                 for i in range(len(trainval_ids)):
                     if trainval_ids[i] in self.video_ids["train"]:
                         self.file_ids["train"].append(trainval_ids[i])
@@ -74,36 +86,15 @@ class AVADataset:
                         self.file_ids["val"].append(trainval_ids[i])
                         self.file_names["val"].append(trainval_names[i])
             else:
-                self.file_ids[mode] = list(map(lambda line: line.split(".")[0], f.readlines()))
                 self.file_names[mode] = list(map(lambda line: line.strip(), f.readlines()))
-            
-    def get_dataset_statistics(self):
-        """
-        Check if the file IDs are in the training and validation lists
-        """
-        # Check if the training, test and validation lists are in the csv IDs
-        nb_file_not_found_in_csv = dict.fromkeys(self.modes, 0)
-        for mode in self.modes:
-            for file_id in self.file_ids[mode]:
-                if file_id not in self.video_ids[mode]:
-                    print(f"File ID {file_id} not found in {mode} list.")
-                    nb_file_not_found_in_csv[mode] += 1
-
-        # Check if the CSV IDs are in the training, test and validation lists
-        nb_csv_id_not_found = dict.fromkeys(self.modes, 0)
-        for mode in self.modes:
-            for file_id in self.video_ids[mode]:
-                if file_id not in self.file_ids[mode]:
-                    print(f"File ID {file_id} not found in {mode} file IDs list.")
-                    nb_csv_id_not_found[mode] += 1
-                    
-        print(f"Number of file IDs not found in CSV: {nb_file_not_found_in_csv}")
-        print(f"Number of CSV IDs not found in file IDs: {nb_csv_id_not_found}")
+                self.file_ids[mode] = list(map(lambda line: line.split(".")[0], self.file_names[mode]))
         
     def download_file(self, filename, mode):
         """
         Download the file from the AVA dataset with the given filename
         """
+        if mode == "train" or mode == "val":
+            mode = "trainval"
         url = f'https://s3.amazonaws.com/ava-dataset/{mode}/{filename}'
         if os.path.isfile(os.path.join(self.video_dir, mode, filename)):
             print(f"File {filename} already exists. Skipping.")
@@ -118,8 +109,8 @@ class AVADataset:
         """
         Download all files from the AVA dataset
         """
+        print("Downloading files...")
         for mode in self.modes:
-            
             for filename in tqdm(self.file_names[mode]):
                 self.download_file(filename, mode)
 
@@ -131,17 +122,15 @@ def main(use_subset=True, subset_exists=False, train_subset=20, val_subset=10, t
     
     dataset = AVADataset()
     dataset.get_video_ids()
-    if use_subset and not subset_exists:
-        dataset.read_file_ids("trainval")
-        dataset.read_file_ids("test")
-        dataset.get_subset(subset_nb=subset_nb, subset_exists=subset_exists)
-    if use_subset and subset_exists:
+    if subset_exists:
         dataset.get_subset(subset_nb=None, subset_exists=subset_exists)
-    if not use_subset:
+    else:
         dataset.read_file_ids("trainval")
         dataset.read_file_ids("test")
+        dataset.get_intersection = dataset.get_intersection()
+        if use_subset:
+            dataset.get_subset(subset_nb=subset_nb, subset_exists=subset_exists)
         
-    dataset.get_dataset_statistics()
     dataset.download_all_files()
 
 if __name__ == "__main__":

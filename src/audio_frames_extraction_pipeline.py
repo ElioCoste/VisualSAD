@@ -79,14 +79,17 @@ class Extractor:
         end = ins_data.iloc[-1]['frame_timestamp']
         entity_id = ins_data.iloc[0]['entity_id']
         ins_path = os.path.join(output_dir, mode, video_key, entity_id+'.wav')
-        if video_key not in audio_features.keys():
-            audio_file = os.path.join(input_dir, mode, video_key+'.wav')
-            sr, audio = wavfile.read(audio_file)
-            audio_features[video_key] = audio
-        audio_start = int(float(start)*sr)
-        audio_end = int(float(end)*sr)
-        audio_data = audio_features[video_key][audio_start:audio_end]
-        wavfile.write(ins_path, sr, audio_data)
+        if os.path.exists(ins_path):
+            print(f"Audio clips {ins_path} already exists. Skipping extraction.")
+        else:
+            if video_key not in audio_features.keys():
+                audio_file = os.path.join(input_dir, mode, video_key+'.wav')
+                sr, audio = wavfile.read(audio_file)
+                audio_features[video_key] = audio
+            audio_start = int(float(start)*sr)
+            audio_end = int(float(end)*sr)
+            audio_data = audio_features[video_key][audio_start:audio_end]
+            wavfile.write(ins_path, sr, audio_data)
             
     def extract_video_clips(self, entity, df, mode, output_dir, input_dir):
         """
@@ -99,17 +102,20 @@ class Extractor:
         j = 0
         for _, row in ins_data.iterrows():
             image_filename = os.path.join(output_dir, mode, str("%.2f"%row['frame_timestamp'])+'.jpg')
-            V.set(cv2.CAP_PROP_POS_MSEC, row['frame_timestamp'] * 1e3)
-            _, frame = V.read()
-            h = np.size(frame, 0)
-            w = np.size(frame, 1)
-            x1 = int(row['entity_box_x1'] * w)
-            y1 = int(row['entity_box_y1'] * h)
-            x2 = int(row['entity_box_x2'] * w)
-            y2 = int(row['entity_box_y2'] * h)
-            face = frame[y1:y2, x1:x2, :]
-            j = j+1
-            cv2.imwrite(image_filename, face)
+            if os.path.exists(image_filename):
+                print(f"Image clips {image_filename} already exists. Skipping extraction.")
+            else:
+                V.set(cv2.CAP_PROP_POS_MSEC, row['frame_timestamp'] * 1e3)
+                _, frame = V.read()
+                h = np.size(frame, 0)
+                w = np.size(frame, 1)
+                x1 = int(row['entity_box_x1'] * w)
+                y1 = int(row['entity_box_y1'] * h)
+                x2 = int(row['entity_box_x2'] * w)
+                y2 = int(row['entity_box_y2'] * h)
+                face = frame[y1:y2, x1:x2, :]
+                j = j+1
+                cv2.imwrite(image_filename, face)
         
 def main(use_subset):
     extractor = Extractor()
