@@ -1,7 +1,12 @@
+import glob
 import os
 import subprocess
 from pathlib import Path
 
+import cv2
+import numpy as np
+import pandas as pd
+from scipy.io import wavfile
 from tqdm import tqdm
 
 
@@ -29,22 +34,74 @@ class Extractor:
         """
         Extract audio from video using ffmpeg
         """
-        command = (f"ffmpeg -y -i {input_video} -async 1 -ac 1 -vn -acodec pcm_s16le -ar 16000 -threads 4 {output_audio} -loglevel panic")
-        subprocess.call(command, shell=True, stdout=None)
-        
-    def standardize_frames(self, input_video, output_video):
-        """
-        Standardize the video frames using ffmpeg
-        """
-        command = (f'ffmpeg -i {input_video} -vf "scale=640:480,fps=30" -c:v libx264 -crf 23 {output_video}')
+        command = (f"ffmpeg -y -i {input_video} -async 1 -ac 1 -vn -acodec pcm_s16le -ar 16000 -threads 8 {output_audio} -loglevel panic")
         subprocess.call(command, shell=True, stdout=None)
         
     def extract_frames(self, input_video, output_frames):
         """
-        Extract frames from video using ffmpeg
+        Extract full frames from video using ffmpeg
         """
         command = (f"ffmpeg -i {input_video} -vf fps=20 -q:v 2 {output_frames}")
         subprocess.call(command, shell=True, stdout=None)
+        
+    def create_annotations_df(self, cvs_file):
+        """
+        Create a dataframe from the csv file
+        """
+        df = pd.read_csv(cvs_file)
+        df_neg = pd.concat([df[df['label_id'] == 0], df[df['label_id'] == 2]])
+        df_pos = df[df['label_id'] == 1]
+        df = pd.concat([df_pos, df_neg]).reset_index(drop=True)
+        df = df.sort_values(['entity_id', 'frame_timestamp']).reset_index(drop=True)
+        entity_list = df['entity_id'].unique().tolist()
+        df = df.groupby('entity_id')
+        
+        return df, entity_list
+        
+    def extract_audio_clips(self, entity_list, df, output_dir, input_dir):
+        """
+        Extract audio clips for each entity from the video
+        """
+        audio_features = {}
+        for entity in tqdm(entity_list):
+            ins_data = df.get_group(entity)
+            video_key = ins_data.iloc[0]['video_id']
+            start = ins_data.iloc[0]['frame_timestamp']
+            end = ins_data.iloc[-1]['frame_timestamp']
+            entity_id = ins_data.iloc[0]['entity_id']
+            ins_path = os.path.join(output_dir, video_key, entity_id+'.wav')
+            if video_key not in audio_features.keys():
+                audio_file = os.path.join(input_dir, video_key+'.wav')
+                sr, audio = wavfile.read(audio_file)
+                audio_features[video_key] = audio
+            audio_start = int(float(start)*sr)
+            audio_end = int(float(end)*sr)
+            audio_data = audio_features[video_key][audio_start:audio_end]
+            wavfile.write(ins_path, sr, audio_data)
+            
+    def extract_video_clips(self, entity_list, df, output_dir, input_dir):
+        """
+        Extract video clips for each entity from the video
+        """
+        for entity in tqdm(entity_list):
+            ins_data = df.get_group(entity)
+            video_key = ins_data.iloc[0]['video_id']
+            video_file = glob.glob(os.path.join(input_dir, '{}.*'.format(video_key)))[0]
+            V = cv2.VideoCapture(video_file)
+            j = 0
+            for _, row in ins_data.iterrows():
+                image_filename = os.path.join(output_dir, str("%.2f"%row['frame_timestamp'])+'.jpg')
+                V.set(cv2.CAP_PROP_POS_MSEC, row['frame_timestamp'] * 1e3)
+                _, frame = V.read()
+                h = np.size(frame, 0)
+                w = np.size(frame, 1)
+                x1 = int(row['entity_box_x1'] * w)
+                y1 = int(row['entity_box_y1'] * h)
+                x2 = int(row['entity_box_x2'] * w)
+                y2 = int(row['entity_box_y2'] * h)
+                face = frame[y1:y2, x1:x2, :]
+                j = j+1
+                cv2.imwrite(image_filename, face)
         
 def main():
     extractor = Extractor()

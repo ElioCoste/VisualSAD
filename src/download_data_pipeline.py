@@ -1,4 +1,5 @@
 import os
+import subprocess
 from pathlib import Path
 
 import requests
@@ -101,10 +102,11 @@ def main():
     Main function to run the data pipeline
     """
     dataset = AVADataset()
-    dataset.get_trainval_ids()
-    dataset.read_file_ids()
+    # dataset.get_trainval_ids()
+    # dataset.read_file_ids()
         
-    dataset.download_all_files()
+    # dataset.download_all_files()
+    dataset.download_csv(os.path.join(dataset.DATASET_DIR, "csv_new"))
 
 if __name__ == "__main__":
     main()

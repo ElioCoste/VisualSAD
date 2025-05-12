@@ -1,5 +1,6 @@
-data/orig_audios
-data/frames
-data/orig_videos
-data/clips_audios
-data/clips_videos
+data/orig_audios/*
+data/frames/*
+data/orig_videos/*
+data/clips_audios/*
+data/clips_videos/*
+data/csv/*
