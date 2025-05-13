@@ -11,26 +11,19 @@ from scipy.io import wavfile
 from tqdm import tqdm
 
 
+from utils import PATHS, MODES
+
+
 class Extractor:
     def __init__(self):
-        self.dataset_dir = os.path.join(Path.cwd().parent, "data")
-        self.video_dir = os.path.join(self.dataset_dir, "orig_videos")
-        self.audio_dir = os.path.join(self.dataset_dir, "orig_audios")
-        self.frames_dir = os.path.join(self.dataset_dir, "frames")
-        self.video_clips_dir = os.path.join(self.dataset_dir, "clips_videos")
-        self.audio_clips_dir = os.path.join(self.dataset_dir, "clips_audios")
-        self.annotations_dir = os.path.join(self.dataset_dir, "csv")
-        os.makedirs(self.audio_dir, exist_ok=True)
-        os.makedirs(self.frames_dir, exist_ok=True)
-        os.makedirs(self.audio_clips_dir, exist_ok=True)
-        os.makedirs(self.video_clips_dir, exist_ok=True)
-        
-        self.modes = ["train", "val", "test"]
-        for m in self.modes:
-            os.makedirs(os.path.join(self.audio_dir, m), exist_ok=True)
-            os.makedirs(os.path.join(self.frames_dir, m), exist_ok=True)
-            os.makedirs(os.path.join(self.audio_clips_dir, m), exist_ok=True)
-            os.makedirs(os.path.join(self.video_clips_dir, m), exist_ok=True)
+        self.dataset_dir = PATHS["dataset_dir"]
+        self.video_dir = PATHS["video_dir"]
+        self.audio_dir = PATHS["audio_dir"]
+        self.frames_dir = PATHS["frames_dir"]
+        self.video_clips_dir = PATHS["video_clips_dir"]
+        self.audio_clips_dir = PATHS["audio_clips_dir"]
+        self.annotations_dir = PATHS["annotations_dir"]
+        self.modes = MODES
 
     def extract_audio(self, input_video, output_audio):
         """

@@ -1,20 +1,19 @@
 import argparse
 import os
 import random
-from pathlib import Path
 
 import pandas as pd
 import requests
 from tqdm import tqdm
 
+from utils import PATHS, MODES
+
 
 class AVADataset:
     def __init__(self):
-        self.dataset_dir = os.path.join(Path.cwd().parent, "data")
-        self.video_dir = os.path.join(self.dataset_dir, "orig_videos")
-        os.makedirs(self.video_dir, exist_ok=True)
-        
-        self.modes = ["train", "val", "test"]
+        self.dataset_dir = PATHS["dataset_dir"]
+        self.video_dir = PATHS["video_dir"]        
+        self.modes = MODES
 
         # Create the train, validation and test directories if they don't exist
         for mode in self.modes:
