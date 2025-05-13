@@ -66,27 +66,27 @@ class AudioEncoder(nn.Module):
         The output is a tensor of shape (batch_size, T, output_dim)
         """
         # Reshape the input to (batch_size, 1, 4T, C_mel)
-        print("Forward pass through the audio encoder")
-        print(f"Input shape before reshaping: {x.shape}")
+        # print("Forward pass through the audio encoder")
+        # print(f"Input shape before reshaping: {x.shape}")
         x = x.view(x.size(0), 1, self.input_shape[0], self.input_shape[1])
-        print(f"Input shape after reshaping: {x.shape}")
+        # print(f"Input shape after reshaping: {x.shape}")
         for layer in self.conv_layers:
             x = layer(x)
-            print(f"Shape after {layer}: {x.shape}")
+            # print(f"Shape after {layer}: {x.shape}")
         # The output shape of the conv layers is
         # (batch_size, n_filters*4, T, C_mel//8)
 
         # Reshape to (batch_size, T*n_filters*4*C_mel//4)
         x = x.view(x.size(0), -1)
-        print(f"Shape after flattening: {x.shape}")
+        # print(f"Shape after flattening: {x.shape}")
         # Apply a fully connected layer to get the final embedding
         # The output shape is (batch_size, T*output_dim)
         x = self.fc(x)
-        print(f"Shape after fully connected layer: {x.shape}")
+        # print(f"Shape after fully connected layer: {x.shape}")
 
         # Reshape to (batch_size, T, output_dim)
         x = x.view(x.size(0), -1, self.output_dim)
-        print(f"Output shape: {x.shape}")
+        # print(f"Output shape: {x.shape}")
         return x
 
 
@@ -150,25 +150,25 @@ class VisualEncoder(nn.Module):
             x: tensor of shape (batch_size, T, output_dim)
                 Embedding for each time frame
         """
-        print("Forward pass through the visual encoder")
-        print(f"Input shape {x.shape}")
+        # print("Forward pass through the visual encoder")
+        # print(f"Input shape {x.shape}")
 
         # Apply the convolutional layers
         for layer in self.conv_layers:
             x = layer(x)
-            print(f"Shape after {layer}: {x.shape}")
+            # print(f"Shape after {layer}: {x.shape}")
 
         # Flatten the features
         x = self.flatten(x)
-        print(f"Shape after flattening: {x.shape}")
+        # print(f"Shape after flattening: {x.shape}")
 
         # Apply the fully connected layer to get the final embedding
         # for each time frame
         x = self.fc(x)
-        print(f"Shape after fully connected layer: {x.shape}")
+        # print(f"Shape after fully connected layer: {x.shape}")
         # Reshape to (batch_size, T, output_dim)
         x = x.view(x.size(0), -1, self.output_dim)
-        print(f"Output shape: {x.shape}")
+        # print(f"Output shape: {x.shape}")
         return x
 
 
@@ -212,29 +212,29 @@ class AudioVisualFusion(nn.Module):
         # Reshape the visual embedding to (batch_size*T, embedding_dim_visual)
         batch_size = audio_embedding.size(0)
         
-        print("Forward pass through the fusion module")
-        print(f"Audio embedding shape: {audio_embedding.shape}")
-        print(f"Visual embedding shape: {visual_embedding.shape}")
+        # print("Forward pass through the fusion module")
+        # print(f"Audio embedding shape: {audio_embedding.shape}")
+        # print(f"Visual embedding shape: {visual_embedding.shape}")
         visual_embedding = visual_embedding.view(
             visual_embedding.size(0) * visual_embedding.size(1), -1)
         audio_embedding = audio_embedding.view(
             audio_embedding.size(0) * audio_embedding.size(1), -1)
-        print(
-            f"Visual embedding shape after reshaping: {visual_embedding.shape}")
-        print(
-            f"Audio embedding shape after reshaping: {audio_embedding.shape}")
+        # print(
+        #    f"Visual embedding shape after reshaping: {visual_embedding.shape}")
+        # print(
+        #    f"Audio embedding shape after reshaping: {audio_embedding.shape}")
 
         # Concatenate the audio and visual embeddings along the last dimension
         x = torch.cat((audio_embedding, visual_embedding), dim=-1)
-        print(f"Shape after concatenation: {x.shape}")
+        # print(f"Shape after concatenation: {x.shape}")
 
         # Apply the fully connected layer to get the final embedding
         x = self.fc(x)
-        print(f"Shape after fully connected layer: {x.shape}")
+        # print(f"Shape after fully connected layer: {x.shape}")
 
         # Reshape the output to (batch_size, output_dim)
         x = x.view(batch_size, -1, self.output_dim)
-        print(f"Output shape: {x.shape}")
+        # print(f"Output shape: {x.shape}")
         return x
 
 
@@ -263,12 +263,12 @@ class TemporalModel(nn.Module):
             x: tensor
                 Output tensor of shape (batch_size, n_speakers, output_dim)
         """
-        print("Forward pass through the temporal model")
-        print(f"Input shape: {x.shape}")
+        # print("Forward pass through the temporal model")
+        # print(f"Input shape: {x.shape}")
         x = x.view(-1, self.input_dim)
-        print(f"Input shape after reshaping: {x.shape}")
+        # print(f"Input shape after reshaping: {x.shape}")
         x, _ = self.lstm(x)
-        print(f"Shape after LSTM: {x.shape}")
+        # print(f"Shape after LSTM: {x.shape}")
         return x
 
 
@@ -363,10 +363,10 @@ class VisualSAD(nn.Module):
         visual = visual.view(-1, self.C, self.T, self.H, self.W)
         visual_embedding = self.visual_encoder(visual)
 
-        print(
-            f"Audio embedding shape after encoder: {audio_embedding.shape}")
-        print(
-            f"Visual embedding shape after encoder: {visual_embedding.shape}")
+        # print(
+        #    f"Audio embedding shape after encoder: {audio_embedding.shape}")
+        # print(
+        #    f"Visual embedding shape after encoder: {visual_embedding.shape}")
 
         # Compute the dot product of the audio and visual embeddings
         # Broadcast the audio embedding to match the visual embedding shape
@@ -379,10 +379,10 @@ class VisualSAD(nn.Module):
         audio_embedding = audio_embedding.contiguous().view(
             -1, self.T, self.embedding_dim_audio)
 
-        print(
-            f"Audio embedding shape after expanding: {audio_embedding.shape}")
-        print(
-            f"Visual embedding shape after reshaping: {visual_embedding.shape}")
+        # print(
+        #    f"Audio embedding shape after expanding: {audio_embedding.shape}")
+        # print(
+        #    f"Visual embedding shape after reshaping: {visual_embedding.shape}")
         # Compute the dot product along the 2 last dimensions
         # Shape is (batch_size * n_speakers, T, embedding_dim_audio)
         s = torch.matmul(
@@ -399,11 +399,11 @@ class VisualSAD(nn.Module):
         # Apply the temporal model to get the predictions
         x = self.temporal_model(x)
         x = x.view(batch_size*n_speakers, self.T, x.size(-1))
-        print(f"Shape after temporal model: {x.shape}")
+        # print(f"Shape after temporal model: {x.shape}")
 
         # Compute the classification loss
        
-        print(f"Targets shape: {targets.shape}")
+        # print(f"Targets shape: {targets.shape}")
         targets = targets.view(batch_size*n_speakers, self.T, -1)
         loss_cls = self.classification_loss(x, targets)
         total_loss = loss_cls + self.lmbda * loss_c
