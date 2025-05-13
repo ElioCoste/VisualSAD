@@ -5,3 +5,4 @@ data/clips_audios/*
 data/clips_videos/*
 data/csv/*
 data_previous
+__pycache__
