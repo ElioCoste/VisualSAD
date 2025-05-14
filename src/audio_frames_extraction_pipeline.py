@@ -99,26 +99,37 @@ class Extractor:
         video_file = glob.glob(os.path.join(
             input_dir, mode, '{}.*'.format(video_key)))[0]
         V = cv2.VideoCapture(video_file)
-        ins_dir = os.path.join(os.path.join(output_dir, video_key, entity))
-        j = 0
+        entity_id, speaker_id = entity.split(":")
+        ins_dir = os.path.join(os.path.join(output_dir, mode, video_key, entity_id, speaker_id))
+        os.makedirs(ins_dir, exist_ok=True)
+        
         for _, row in ins_data.iterrows():
             image_filename = os.path.join(ins_dir, str(
                 "%.2f" % row['frame_timestamp'])+'.jpg')
             if os.path.exists(image_filename):
                 print(
                     f"Image clips {image_filename} already exists. Skipping extraction.")
-            else:
-                V.set(cv2.CAP_PROP_POS_MSEC, row['frame_timestamp'] * 1e3)
-                _, frame = V.read()
-                h = np.size(frame, 0)
-                w = np.size(frame, 1)
-                x1 = int(row['entity_box_x1'] * w)
-                y1 = int(row['entity_box_y1'] * h)
-                x2 = int(row['entity_box_x2'] * w)
-                y2 = int(row['entity_box_y2'] * h)
-                face = frame[y1:y2, x1:x2, :]
-                j = j+1
-                cv2.imwrite(image_filename, face)
+                continue
+    
+            V.set(cv2.CAP_PROP_POS_MSEC, row['frame_timestamp'] * 1e3)
+            _, frame = V.read()
+            if frame is None:
+                print(
+                    f"Error: frame is None for {image_filename} at {row['frame_timestamp']}")
+                continue
+            
+            h = np.size(frame, 0)
+            w = np.size(frame, 1)
+            x1 = int(row['entity_box_x1'] * w)
+            y1 = int(row['entity_box_y1'] * h)
+            x2 = int(row['entity_box_x2'] * w)
+            y2 = int(row['entity_box_y2'] * h)
+            face = frame[y1:y2, x1:x2, :]
+            res = cv2.imwrite(image_filename, face)
+            if not res:
+                print(
+                    f"Error: failed to write image {image_filename} at {row['frame_timestamp']}")
+                print(f"Face shape: {face.shape}")
 
 
 def main(use_subset, extract_full_frames):
@@ -133,7 +144,6 @@ def main(use_subset, extract_full_frames):
 
             output_audio = os.path.join(
                 extractor.audio_dir, m, video_id + ".wav")
-
             if os.path.exists(output_audio):
                 print(
                     f"Audio file {output_audio} already exists. Skipping extraction.")
