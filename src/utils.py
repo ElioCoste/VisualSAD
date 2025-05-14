@@ -2,6 +2,9 @@ import os
 from pathlib import Path
 
 
+FPS = 25
+FS = 16000
+
 DATASET_DIR = os.path.join(Path.cwd().parent, "data")
 
 MODES = ["train", "val", "test"]
@@ -27,4 +30,3 @@ for m in MODES:
 for path in PATHS.values():
     if not os.path.exists(path):
         os.makedirs(path)
-    

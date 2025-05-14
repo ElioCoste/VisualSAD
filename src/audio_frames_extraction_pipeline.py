@@ -10,7 +10,7 @@ from scipy.io import wavfile
 from tqdm import tqdm
 
 
-from utils import PATHS, MODES
+from utils import PATHS, MODES, FPS
 
 
 class Extractor:
@@ -32,12 +32,12 @@ class Extractor:
             f"ffmpeg -y -i {input_video} -async 1 -ac 1 -vn -acodec pcm_s16le -ar 16000 -threads 8 {output_audio} -loglevel panic")
         subprocess.call(command, shell=True, stdout=None)
 
-    def extract_frames(self, input_video, output_frames):
+    def extract_frames(self, input_video, output_frames, fps=20):
         """
         Extract full frames from video using ffmpeg
         """
         command = (
-            f"ffmpeg -i {input_video} -vf fps=20 -q:v 2 {output_frames}")
+            f"ffmpeg -i {input_video} -vf fps={fps} -q:v 2 {output_frames}")
         subprocess.call(command, shell=True, stdout=None)
 
     def create_annotations_df(self, mode, use_subset=True):
@@ -148,7 +148,8 @@ def main(use_subset, extract_full_frames):
                     print(
                         f"Frames for {video} already exist. Skipping extraction.")
                 else:
-                    extractor.extract_frames(input_video, output_frames)
+                    extractor.extract_frames(
+                        input_video, output_frames, fps=FPS)
 
         print("Extracting audio and video clips for mode:", m)
         df, entity_list = extractor.create_annotations_df(m, use_subset)
