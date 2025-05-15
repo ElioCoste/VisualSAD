@@ -383,14 +383,25 @@ class VisualSAD(nn.Module):
         #    f"Audio embedding shape after expanding: {audio_embedding.shape}")
         # print(
         #    f"Visual embedding shape after reshaping: {visual_embedding.shape}")
-        # Compute the dot product along the 2 last dimensions
-        # Shape is (batch_size * n_speakers, T, embedding_dim_audio)
-        s = torch.matmul(
-            audio_embedding, visual_embedding.transpose(1, 2))
-
-        # Compute the contrastive loss
-        loss_c = self.contrastive_loss(s)
-
+        
+        # Select only the active frames i.e. the frames where at least one
+        # speaker is speaking (targets[..., t, :])
+        # and compute the contrastive loss using the
+        # corresponding embeddings
+        targets = targets.view(batch_size*n_speakers, self.T, -1)
+        act_idx = targets.sum(dim=-1) > 0
+        if act_idx.sum() > 0:
+            act_embedding_audio = audio_embedding[act_idx]
+            act_embedding_visual = visual_embedding[act_idx]       
+            # Shape is (batch_size * n_speakers, T_act, embedding_dim_audio)
+            # Compute the dot product along the 2 last dimensions
+            s = torch.matmul(
+                act_embedding_audio, act_embedding_visual.transpose(1, 2))
+            # Compute the contrastive loss
+            loss_c = self.contrastive_loss(s)
+        else:
+            # If no active frames are present, set the loss to 0
+            loss_c = torch.tensor(0.0).to(audio.device)
 
         # Apply the fusion module to get the final embedding
         # Shape is (batch_size, T, embedding_dim)
