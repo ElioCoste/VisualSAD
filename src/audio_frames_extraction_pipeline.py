@@ -2,6 +2,7 @@ import argparse
 import glob
 import os
 import subprocess
+import time
 
 import cv2
 import numpy as np
@@ -11,8 +12,6 @@ from tqdm import tqdm
 
 
 from utils import PATHS, MODES, FPS
-import re
-
 
 class Extractor:
     def __init__(self):
@@ -21,7 +20,6 @@ class Extractor:
         self.audio_dir = PATHS["audio_dir"]
         self.frames_dir = PATHS["frames_dir"]
         self.video_clips_dir = PATHS["video_clips_dir"]
-        self.audio_clips_dir = PATHS["audio_clips_dir"]
         self.annotations_dir = PATHS["annotations_dir"]
         self.modes = MODES
 
@@ -113,7 +111,6 @@ class Extractor:
             input_dir, mode, '{}.*'.format(video_key)))[0]
         entity_id = ins_data.iloc[0]['entity_id']
         V = cv2.VideoCapture(video_file)
-
         try:
             # The entity_id is in the format of "<video_id>_<start>_<end>:<speaker_id>"
             # Remove the video id from the entity id
@@ -136,8 +133,14 @@ class Extractor:
                     f"Image clips {image_filename} already exists. Skipping extraction.")
                 continue
 
+            # t0 = time.time()
             V.set(cv2.CAP_PROP_POS_MSEC, int(row['frame_timestamp'] * 1e3))
+            # t1 = time.time()
             ret, frame = V.read()
+            # t2 = time.time()
+            # print(f"Time taken to set frame position: {t1-t0:.4f} seconds")
+            # print(f"Time taken to read frame: {t2-t1:.4f} seconds")
+
             if frame is None or not ret:
                 print(
                     f"Error: frame is None for {image_filename} at {row['frame_timestamp']}")
@@ -156,6 +159,10 @@ class Extractor:
                 print(
                     f"Error: failed to write image {image_filename} at {row['frame_timestamp']}")
                 print(f"Face shape: {face.shape}")
+                
+        # Close the video capture object
+        V.release()
+        
 
 
 def main(use_subset, extract_full_frames):
@@ -190,8 +197,6 @@ def main(use_subset, extract_full_frames):
         print("Extracting audio and video clips for mode:", m)
         df, entity_list = extractor.create_annotations_df(m, use_subset)
         for entity in tqdm(entity_list):
-            extractor.extract_audio_clips(
-                entity, df, m, output_dir=extractor.audio_clips_dir, input_dir=extractor.audio_dir)
             extractor.extract_video_clips(
                 entity, df, m, output_dir=extractor.video_clips_dir, input_dir=extractor.video_dir)
 

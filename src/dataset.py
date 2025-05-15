@@ -8,7 +8,7 @@ import torch
 import torchaudio
 import torchvision
 
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader
 
 from torchvision.transforms import Compose, ToTensor, Resize, Grayscale
 from torchaudio.transforms import MelSpectrogram, AmplitudeToDB
@@ -76,9 +76,8 @@ def split_segments(segments, T, min_size=0.1):
     Split the segments into smaller segments T frames (duration T/FPS s).
     Discard segments smaller than min_size*T.
     """
-    min_size = T * min_size / FPS
     T = T / FPS
-
+    min_size = T * min_size
     split_segments = []
     for segment in segments:
         start_time, end_time = segment
@@ -140,7 +139,7 @@ class AVADataset(Dataset):
             self.img_shape = (self.W, self.H, self.C)
 
         self.dataframes_dir = os.path.join(PATHS["dataframes_dir"], mode)
-        self.audio_dir = os.path.join(PATHS["orig_audios"], mode)
+        self.audio_dir = os.path.join(PATHS["audio_dir"], mode)
         # If full_frames is True, use the full frames instead of the cropped faces
         if full_frames:
             self.video_dir = PATHS[f"{mode}_frames_dir"]
@@ -149,6 +148,16 @@ class AVADataset(Dataset):
         self.create_dataset()
 
     def __getitem__(self, idx):
+        """
+        Get the item at the given index.
+
+        Args:
+            idx (int): Index of the item to get.
+        Returns:
+            mel (torch.Tensor): Mel spectrogram of the audio, shape (4T, C_mel).
+            images (torch.Tensor): Images of the video, shape (n_speakers, T, H, W, C) or (n_speakers, T, H, W) if grayscale.
+            targets (torch.Tensor): Targets of the video, shape (n_speakers, T).
+        """
         # Use the cumulative index to get the subset of the dataset containing
         # the segment of interest.
         # The cumulative index contains the index of the first segment of each
@@ -182,8 +191,8 @@ class AVADataset(Dataset):
             times = times[:self.T]
 
         n_speakers = len(active_entities)
-        targets = np.zeros(
-            (n_speakers, len(times)), dtype=np.float32)
+        targets = torch.zeros(
+            (n_speakers, len(times)), dtype=torch.bool)
         images = []
         for i, entity_id in enumerate(active_entities):
             # Get the active frames for the entity
@@ -251,29 +260,27 @@ class AVADataset(Dataset):
     def __len__(self):
         return self.dataset_length
 
+    def get_df_paths(self, video_id, seg_id):
+        """
+        Get the paths to the dataframes for the given video and segment.
+        """
+        seg_df_path = os.path.join(
+            self.dataframes_dir, video_id, seg_id, "seg.csv")
+        entities_df_path = os.path.join(
+            self.dataframes_dir, video_id, seg_id, "entities.csv")
+        return seg_df_path, entities_df_path
+
     def create_dataset(self):
         """
         Create the dataset:
         """
         print("Creating dataset {}".format(self.mode))
 
-        print("Creating dataset directories")
-        # Create the directories to store the dataframes
-        self.seg_df_dir = os.path.join(self.dataframes_dir, "segments")
-        self.entities_df_dir = os.path.join(self.dataframes_dir, "entities")
-
+        # Main dataframe to store the paths to the dataframes
+        # and the cumulative index of the segments
         self.dataframe_path = os.path.join(
-            self.dataframes_dir, "dataframe.csv".format(self.mode))
-        if os.path.exists(self.dataframe_path):
-            print("Loading dataset from {}".format(self.dataframe_path))
-            self.dataframe = pd.read_csv(self.dataframe_path)
-            self.seg_cum_idx = [0] + list(
-                self.dataframe["seg_cum_idx"].values)
-            self.dataset_length = self.seg_cum_idx[-1]
-            return
-
-        os.makedirs(self.seg_df_dir, exist_ok=True)
-        os.makedirs(self.entities_df_dir, exist_ok=True)
+            self.dataframes_dir, "dataframe.csv")
+        os.makedirs(self.dataframes_dir, exist_ok=True)
 
         self.dataset_length = 0
         self.seg_cum_idx = [0]
@@ -296,6 +303,7 @@ class AVADataset(Dataset):
                 self.seg_cum_idx.append(
                     self.seg_cum_idx[-1] + n_seg
                 )
+                self.dataset_length += n_seg
                 # Store the paths to the dataframes in the main dataframe
                 self.dataframe.loc[len(self.dataframe)] = [
                     video_id,
@@ -312,11 +320,9 @@ class AVADataset(Dataset):
         Add the active segments to the given dataframe.
         """
         video_dir = os.path.join(self.video_dir, video_id, seg_id)
-
-        seg_df_path = os.path.join(
-            self.seg_df_dir, video_id, seg_id + ".csv")
-        entities_df_path = os.path.join(
-            self.entities_df_dir, video_id, seg_id + ".csv")
+        seg_df_path, entities_df_path = self.get_df_paths(video_id, seg_id)
+        os.makedirs(os.path.dirname(seg_df_path), exist_ok=True)
+        os.makedirs(os.path.dirname(entities_df_path), exist_ok=True)
 
         # If the dataframes already exist, skip the processing
         if os.path.exists(seg_df_path) and os.path.exists(entities_df_path):
@@ -377,31 +383,84 @@ class AVADataset(Dataset):
 
         merged_segments = merge_segments(segments)
         splits = split_segments(merged_segments, self.T)
+
         # Sanity check: every segment should be of size at most T
         # at least 0.1*T and there should be at least one active entity
         for segment in splits:
             start_time, end_time = segment
-            assert end_time - \
-                start_time <= (self.T+.5) / FPS, "Segment is too long"
-            assert end_time - \
-                start_time >= (0.1 * self.T + .5) / FPS, "Segment is too short"
             active_entities = get_active_entities(
                 entities_df, start_time, end_time)
+            error = False
+            if end_time - start_time > (self.T + .5) / FPS:
+                error = True
+                print("Segment is too long with time {}, {}".format(
+                    start_time, end_time), "Maximum size: {}".format(
+                        (self.T) / FPS))
+            if end_time - start_time < (0.1 * self.T - .5) / FPS:
+                error = True
+                print("Segment is too short with time {}, {}".format(
+                    start_time, end_time), "Minimum size: {}".format(
+                        (0.1 * self.T) / FPS))
             if len(active_entities) == 0:
                 print(f"Segment {segment} has no active entities")
+                error = True
+            if error:
                 print(
                     f"Start time: {start_time}, end time: {end_time}")
                 print(entities_df)
                 print(segments)
                 print(merged_segments)
+                print(splits)
                 raise ValueError(
                     f"Segment {segment} has no active entities")
 
         # Create the dataframe to store the active segments
         seg_df = pd.DataFrame(splits, columns=["start_time", "end_time"])
-        self.dataset_length += len(splits)
         # Save the dataframes to disk
         seg_df.to_csv(seg_df_path, index=False)
         entities_df.to_csv(entities_df_path, index=False)
 
-        return len(splits), seg_df_path, entities_df_path
+        return len(seg_df), seg_df_path, entities_df_path
+
+
+class AVADataLoader(DataLoader):
+    """
+    DataLoader for the AVA dataset.
+
+    Implements automatic padding to the maximum number of speakers in the batch.
+    """
+
+    def __init__(self, dataset, batch_size=1, shuffle=False, num_workers=0):
+        super().__init__(dataset, batch_size=batch_size,
+                         shuffle=shuffle, num_workers=num_workers, collate_fn=self.collate_fn)
+
+    def collate_fn(self, batch):
+        """
+        Collate function to pad the batch to the maximum number of speakers.
+        """
+        # Get the maximum number of speakers in the batch
+        max_speakers = max([len(b[2]) for b in batch])
+        T = batch[0][1].shape[1]
+        img_shape = batch[0][1].shape[2:]
+
+        # Pad images and targets in the batch to the maximum number of speakers
+        # Initially, the elements have the following shapes:
+        # mel: (4T, C_mel) no need to pad since there is one mel spectrogram for all speakers
+        # images: (n_speakers, T, H, W) or (n_speakers, T, H, W, C)
+        # targets: (n_speakers, T)
+
+        padded_batch = []
+        for mel, images, targets in batch:
+            # Everything is padded with zeros
+            images = torch.cat([images, torch.zeros(
+                (max_speakers-images.shape[0], T, *img_shape))], dim=0)
+            targets = torch.cat([targets, torch.zeros(
+                (max_speakers-targets.shape[0], targets.shape[1]))], dim=0)
+            padded_batch.append((mel, images, targets))
+
+        # Stack the batch
+        mel, images, targets = zip(*padded_batch)
+        mel = torch.stack(mel, dim=0)
+        images = torch.stack(images, dim=0)
+        targets = torch.stack(targets, dim=0)
+        return mel, images, targets
