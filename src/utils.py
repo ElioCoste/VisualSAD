@@ -19,6 +19,7 @@ PATHS = {
     "annotations_dir": os.path.join(DATASET_DIR, "csv"),
     "orig_audios": os.path.join(DATASET_DIR, "orig_audios"),
     "orig_videos": os.path.join(DATASET_DIR, "orig_videos"),
+    "dataframes_dir": os.path.join(DATASET_DIR, "dataframes"),
 }
 
 for m in MODES:

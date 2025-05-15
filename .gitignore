@@ -6,3 +6,4 @@ data/clips_videos/*
 data/csv/*
 data_previous
 __pycache__
+data/dataframes/*
