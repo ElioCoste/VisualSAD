@@ -11,6 +11,7 @@ from tqdm import tqdm
 
 
 from utils import PATHS, MODES, FPS
+import re
 
 
 class Extractor:
@@ -74,9 +75,21 @@ class Extractor:
         start = ins_data.iloc[0]['frame_timestamp']
         end = ins_data.iloc[-1]['frame_timestamp']
         entity_id = ins_data.iloc[0]['entity_id']
-        ins_dir = os.path.join(output_dir, mode, video_key)
+
+        try:
+            # The entity_id is in the format of "<video_id>_<start>_<end>:<speaker_id>"
+            # Remove the video id from the entity id
+            entity_id_w = entity_id[len(video_key)+1:]
+            start_end = entity_id_w[:entity_id_w.index(":")]
+        except Exception as e:
+            raise ValueError(
+                f"Entity {entity} has a weird format.", e)
+
+        ins_dir = os.path.join(output_dir, mode, video_key, start_end)
         os.makedirs(ins_dir, exist_ok=True)
-        ins_path = os.path.join(ins_dir, f'{entity_id}.wav')
+
+        ins_path = os.path.join(
+            ins_dir, f'{entity_id.replace(":", "_")}_{start}_{end}.wav')
         if os.path.exists(ins_path):
             print(
                 f"Audio clips {ins_path} already exists. Skipping extraction.")
@@ -98,26 +111,38 @@ class Extractor:
         video_key = ins_data.iloc[0]['video_id']
         video_file = glob.glob(os.path.join(
             input_dir, mode, '{}.*'.format(video_key)))[0]
+        entity_id = ins_data.iloc[0]['entity_id']
         V = cv2.VideoCapture(video_file)
-        entity_id, speaker_id = entity.split(":")
-        ins_dir = os.path.join(os.path.join(output_dir, mode, video_key, entity_id, speaker_id))
+
+        try:
+            # The entity_id is in the format of "<video_id>_<start>_<end>:<speaker_id>"
+            # Remove the video id from the entity id
+            entity_id_w = entity_id[len(video_key)+1:]
+            start_end = entity_id_w[:entity_id_w.index(":")]
+        except Exception as e:
+            raise ValueError(
+                f"Entity {entity} has a weird format.", e)
+
+        ins_dir = os.path.join(os.path.join(
+            output_dir, mode, video_key, start_end, entity_id.replace(":", "_")))
         os.makedirs(ins_dir, exist_ok=True)
-        
+
         for _, row in ins_data.iterrows():
+            label_id = row['label_id']
             image_filename = os.path.join(ins_dir, str(
-                "%.2f" % row['frame_timestamp'])+'.jpg')
+                "%.2f" % row['frame_timestamp']) + f'_{label_id}.jpg')
             if os.path.exists(image_filename):
                 print(
                     f"Image clips {image_filename} already exists. Skipping extraction.")
                 continue
-    
-            V.set(cv2.CAP_PROP_POS_MSEC, row['frame_timestamp'] * 1e3)
-            _, frame = V.read()
-            if frame is None:
+
+            V.set(cv2.CAP_PROP_POS_MSEC, int(row['frame_timestamp'] * 1e3))
+            ret, frame = V.read()
+            if frame is None or not ret:
                 print(
                     f"Error: frame is None for {image_filename} at {row['frame_timestamp']}")
                 continue
-            
+
             h = np.size(frame, 0)
             w = np.size(frame, 1)
             x1 = int(row['entity_box_x1'] * w)
@@ -125,8 +150,9 @@ class Extractor:
             x2 = int(row['entity_box_x2'] * w)
             y2 = int(row['entity_box_y2'] * h)
             face = frame[y1:y2, x1:x2, :]
+
             res = cv2.imwrite(image_filename, face)
-            if not res:
+            if not res or not os.path.exists(image_filename):
                 print(
                     f"Error: failed to write image {image_filename} at {row['frame_timestamp']}")
                 print(f"Face shape: {face.shape}")

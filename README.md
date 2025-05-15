@@ -6,27 +6,32 @@ It automates the data acquisition and preprocessing steps needed for experiments
 ## Repository Structure
 
 ```plaintext
-data/
-├─── train/
-│  ├── annotations/
-│  ├── audio/
-│  ├── frames/
-│  └── videos/
-|
-├─── val/
-│  ├── annotations/
-│  ├── audio/
-│  ├── frames/
-│  └── videos/
-|
-├─── ava_speech_file_names_v1.txt
-├─── dataset_description.md
-|
-papers/
-|
-src/
-├─── download_data_pipeline.py
-├─── audio_frames_extraction_pipeline.py
+.
+├── data/
+│   ├── clips_audios/
+│   │   ├── train/
+│   │   │   └── videoID/
+│   │   │       ├── entityID.wav
+│   │   │       └── ...
+│   │   ├── val
+│   │   └── test
+│   ├── clips_videos/
+│   │   ├── train/
+│   │   │   └── videoId/
+│   │   │       └── start_end/
+│   │   │           └── entityID/
+│   │   │               ├── timestamp.jpg
+│   │   │               └── ...
+│   │   ├── val
+│   │   └── test
+│   ├── frames/
+│   │   ├── train
+│   │   ├── val
+│   │   └── test
+│   └── csv/
+│       └── ...
+└── src/
+    └── python files
 ```
 
 
