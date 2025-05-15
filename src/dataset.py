@@ -2,6 +2,8 @@ import os
 
 import numpy as np
 import pandas as pd
+from PIL import Image
+
 import torch
 import torchaudio
 import torchvision
@@ -86,18 +88,17 @@ def split_segments(segments, T, min_size=0.1):
             split_segments.append(
                 (current_time, round(current_time + T, 2)))
             current_time = round(current_time + T + 1/FPS, 2)
-
-        # Add the last segment if it is larger than min_size
+        # Add the remaining segment if it is larger than min_size
         if end_time - current_time > min_size:
             split_segments.append((current_time, end_time))
-
     return split_segments
 
 
 class AVADataset(Dataset):
     def __init__(self,
                  mode, full_frames=False,
-                 C_mel=128,
+                 C_mel=64,
+                 grayscale=True,
                  W=112, H=112,
                  T=32,):
         """
@@ -109,20 +110,34 @@ class AVADataset(Dataset):
         self.mode = mode
         self.full_frames = full_frames
         self.C_mel = C_mel
+        self.grayscale = grayscale
+        self.C = 1 if grayscale else 3
         self.W = W
         self.H = H
         self.T = T
 
+        # We want 4T mel frames for T frames of video
+        self.hop_length = int(FS / (FPS * 4)) + 1
+
         self.audio_transforms = Compose([
-            MelSpectrogram(sample_rate=FS, n_mels=self.C_mel),
+            MelSpectrogram(sample_rate=FS, n_mels=self.C_mel,
+                           hop_length=self.hop_length),
             AmplitudeToDB(stype='power', top_db=80),
         ])
 
-        self.visual_transforms = Compose([
-            Resize((W, H)),
-            Grayscale(num_output_channels=1),
-            ToTensor(),
-        ])
+        if grayscale:
+            self.visual_transforms = Compose([
+                Resize((W, H)),
+                Grayscale(num_output_channels=1),
+                ToTensor(),
+            ])
+            self.img_shape = (self.W, self.H)
+        else:
+            self.visual_transforms = Compose([
+                Resize((W, H)),
+                ToTensor(),
+            ])
+            self.img_shape = (self.W, self.H, self.C)
 
         self.dataframes_dir = os.path.join(PATHS["dataframes_dir"], mode)
         self.audio_dir = os.path.join(PATHS["orig_audios"], mode)
@@ -139,36 +154,99 @@ class AVADataset(Dataset):
         # The cumulative index contains the index of the first segment of each
         # subset of the dataset (e.g. [0, 10, 20, 30])
         # Get the index of the segment in the subset
-        seg_idx = np.searchsorted(self.seg_cum_idx, idx)
+        seg_idx = np.searchsorted(self.seg_cum_idx, idx+1) - 1
         # Load the dataframes corresponding to the segment
-        video_id, seg_id, seg_df_path, entities_df_path, _ = self.dataframe.iloc[idx]
-        print(f"Loading segment {video_id}/{seg_id} ({idx})")
-
+        video_id, seg_id, seg_df_path, entities_df_path, _ = self.dataframe.iloc[seg_idx]
         seg_df = pd.read_csv(seg_df_path)
         entities_df = pd.read_csv(entities_df_path)
 
         # Substract the index of the first segment of the subset to
         # get the index of the segment in the dataframe
         seg_idx_df = idx - self.seg_cum_idx[seg_idx]
-        print(f"Segment index in dataframe: {seg_idx_df}")
-        print(f"Segment index in subset: {seg_idx}")
-
         # Get the segment of interest
-        print(seg_df.head())
-        print(entities_df.head())
         start_time, end_time = seg_df.iloc[seg_idx_df][[
             "start_time", "end_time"]]
 
         # Get all active entities in the given time range
-        context_entities = get_active_entities(
+        active_entities = get_active_entities(
             entities_df, start_time, end_time)
-
-        print(f"Context entities: {context_entities}")
 
         # Create the time range for the focus entity to synchronize the frames
         times = np.arange(start_time, end_time+.5/FPS, 1/FPS)
+        # If the number of frames is less than T, pad with zeros
+        if len(times) < self.T:
+            times = np.pad(times, (0, self.T-len(times)),
+                           'constant', constant_values=0)
+        # If the number of frames is greater than T, truncate to T
+        elif len(times) > self.T:
+            times = times[:self.T]
+
+        n_speakers = len(active_entities)
         targets = np.zeros(
-            (len(times), len(context_entities)+1), dtype=np.float32)
+            (n_speakers, len(times)), dtype=np.float32)
+        images = []
+        for i, entity_id in enumerate(active_entities):
+            # Get the active frames for the entity
+            entity_frames, first_frame_time, last_frame_time = get_active_frames(
+                os.path.join(self.video_dir, video_id, seg_id, entity_id),
+                start_time,
+                end_time
+            )
+            # Load the images and apply the transformations
+            image_frames = []
+            label_frames = []
+            for frame in entity_frames:
+                image_path = os.path.join(
+                    self.video_dir, video_id, seg_id, entity_id, frame)
+                label = int(frame.split("_")[-1].split(".")[0])
+                image = Image.open(image_path)
+                image = self.visual_transforms(image)
+                image_frames.append(image)
+                label_frames.append(label)
+
+            # Convert the frame timings to indices
+            shape = [self.T] + list(self.img_shape)
+            clip_entity = torch.zeros(shape, dtype=torch.float32)
+            j = 0
+            for k, t in enumerate(times):
+                # If there is a frame at the given time, add it to the list
+                # Otherwise, add an empty frame
+                if t < first_frame_time or t > last_frame_time:
+                    clip_entity[k] = 0
+                    targets[i, k] = 0
+                elif j < len(image_frames):
+                    clip_entity[k] = image_frames[j]
+                    targets[i, k] = label_frames[j]
+                    j += 1
+            # Add the clip to the list of clips
+            images.append(clip_entity)
+
+        # Convert the list of clips to a tensor
+        try:
+            images = torch.stack(images, dim=0)
+        except Exception as e:
+            print(f"Error stacking images: {images}")
+            print(f"Active entities: {active_entities}")
+            print(f"VIdeo ID: {video_id}")
+            print(f"Segment ID: {seg_id}")
+            print(f"Start time: {start_time}")
+            print(f"End time: {end_time}")
+            raise e
+
+        # Load the audio
+        audio_path = os.path.join(self.audio_dir, video_id+".wav")
+        audio, _ = torchaudio.load(
+            audio_path,
+            frame_offset=int(start_time*FS),
+            num_frames=int((end_time-start_time)*FS)
+        )
+        # Apply the audio transformations
+        mel = self.audio_transforms(audio)
+        # Pad the mel spectrogram to 4T frames
+        if mel.shape[-1] < 4*self.T:
+            mel = torch.nn.functional.pad(
+                mel, (0, 4*self.T-mel.shape[-1]), "constant", 0)
+        return mel, images, targets
 
     def __len__(self):
         return self.dataset_length
@@ -254,41 +332,32 @@ class AVADataset(Dataset):
         entities = []
         for entity_id in os.listdir(video_dir):
             image_files = os.listdir(os.path.join(video_dir, entity_id))
-            image_files.sort()
             # Frames are named as <time in s>.<time in ms>.jpg
-            # Get the start of the first frame and the end of the last frame
-            first_frame = image_files[0]
-            last_frame = image_files[-1]
-            start_time = float(".".join(first_frame.split(".")[:-1]))
-            end_time = float(".".join(last_frame.split(".")[:-1]))
+            # Get the time of the frames
+            frame_times = []
+            for frame in image_files:
+                time = float(".".join(frame.split(".")[:-1]))
+                frame_times.append(time)
             # Add the transition to the list
             # Positive transition at start_time and negative transition at end_time
-            entities.append((start_time, end_time, entity_id))
+            entities.append((min(frame_times),
+                             max(frame_times),
+                             entity_id))
 
         # Create the dataframe to store the active segments
         entities_df = pd.DataFrame(
             entities, columns=["start_time", "end_time", "entity_id"])
 
-        entities_to_num = {}
-        id_to_entities = []
         transitions = []
-        for entity_id in os.listdir(video_dir):
-            image_files = os.listdir(os.path.join(video_dir, entity_id))
-            image_files.sort()
-            # If the entity_id is not in the dictionary, add it
+        entities_to_num = {}
+        for i, entity in enumerate(entities):
+            start_time, end_time, entity_id = entity
+            # Add the start and end times to the list of transitions
+            transitions.append((start_time, i, 1))
+            transitions.append((end_time, i, -1))
+            # Add the entity id to the dictionary if it is not already present
             if entity_id not in entities_to_num:
-                entities_to_num[entity_id] = len(entities_to_num)
-                id_to_entities.append((entity_id))
-            # Frames are named as <time in s>.<time in ms>.jpg
-            # Get the start of the first frame and the end of the last frame
-            first_frame = image_files[0]
-            last_frame = image_files[-1]
-            start_time = round(float(".".join(first_frame.split(".")[:-1])), 2)
-            end_time = round(float(".".join(last_frame.split(".")[:-1])), 2)
-            # Add the transition to the list
-            # Positive transition at start_time and negative transition at end_time
-            transitions.append((start_time, entities_to_num[entity_id], 1))
-            transitions.append((end_time, entities_to_num[entity_id], -1))
+                entities_to_num[entity_id] = i
 
         # Sort the transitions by time
         transitions.sort(key=lambda x: x[0])
@@ -308,6 +377,26 @@ class AVADataset(Dataset):
 
         merged_segments = merge_segments(segments)
         splits = split_segments(merged_segments, self.T)
+        # Sanity check: every segment should be of size at most T
+        # at least 0.1*T and there should be at least one active entity
+        for segment in splits:
+            start_time, end_time = segment
+            assert end_time - \
+                start_time <= (self.T+.5) / FPS, "Segment is too long"
+            assert end_time - \
+                start_time >= (0.1 * self.T + .5) / FPS, "Segment is too short"
+            active_entities = get_active_entities(
+                entities_df, start_time, end_time)
+            if len(active_entities) == 0:
+                print(f"Segment {segment} has no active entities")
+                print(
+                    f"Start time: {start_time}, end time: {end_time}")
+                print(entities_df)
+                print(segments)
+                print(merged_segments)
+                raise ValueError(
+                    f"Segment {segment} has no active entities")
+
         # Create the dataframe to store the active segments
         seg_df = pd.DataFrame(splits, columns=["start_time", "end_time"])
         self.dataset_length += len(splits)
