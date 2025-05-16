@@ -2,34 +2,48 @@ import argparse
 import os
 import subprocess
 
-import sys
-
 import pandas as pd
 from tqdm import tqdm
 
-from utils import PATHS, MODES, FPS, T, FS, LABELS_TO_INDEX
+from utils import PATHS, MODES, T, FS, LABELS_TO_INDEX
 
 
 def extract_audio(input_video, output_audio, start_time, end_time, fs=FS):
     """
     Extract audio from video using ffmpeg
+    Combine channels to mono to save space
     """
     command = (
-        f"ffmpeg -ss {start_time} -to {end_time} -i {input_video} -threads 8 -vn -acodec pcm_s16le -ar {fs} {output_audio} -loglevel panic")
+        f"ffmpeg -ss {start_time} -to {end_time} -i {input_video} -threads 8 -vn -ac 1 -acodec pcm_s16le -ar {fs} {output_audio} -loglevel panic")
     subprocess.call(command, shell=True, stdout=None)
 
 
-def extract_frames(input_video, output_dir, frames):
+def extract_frames(input_video, output_dir, frames, precise_seeking=False, fps=None):
     """
     Extract full frames from video using ffmpeg
+
+    If precise_seeking is True, extract frames from the exact timestamps
+    If False, seek to the first given timestamp and extract the correct number of frames
+    by estimating the frame rate using the timestamps
     """
-    for i, frame in enumerate(frames):
-        if os.path.exists(os.path.join(output_dir, f"{str(i).zfill(4)}.jpg")):
-            continue
+    if precise_seeking:
+        for i, frame in enumerate(frames):
+            if os.path.exists(os.path.join(output_dir, f"{str(i).zfill(4)}.jpg")):
+                continue
+            command = (
+                f'ffmpeg -ss {frame} -i "{input_video}" -frames:v 1 "{output_dir}\\{str(i).zfill(4)}.jpg" -loglevel panic')
+            # Call the command and don't wait for it to finish
+            subprocess.call(command, shell=True, stdout=None)
+    else:
+        assert fps is not None, "fps must be provided if precise_seeking is False"
+        # Get the first frame timestamp
+        start_time = frames[0]
+        # Calculate the number of frames to extract
+        num_frames = len(frames)
         command = (
-            f'ffmpeg -ss {frame} -i "{input_video}" -frames:v 1 "{output_dir}\\{str(i).zfill(4)}.jpg" -loglevel panic')
-        # Call the command and don't wait for it to finish
+            f'ffmpeg -ss {start_time} -i "{input_video}" -frames:v {num_frames} -vf "fps={fps}" "{output_dir}\\%04d.jpg" -loglevel panic')
         subprocess.call(command, shell=True, stdout=None)
+
 
 class Extractor:
     """
@@ -40,10 +54,8 @@ class Extractor:
     for every relevant segment in each video
     """
 
-    def __init__(self, mode, FPS, T, min_size=0.1):
+    def __init__(self, mode, T, min_size=0.1):
         self.mode = mode
-        self.FPS = FPS
-        self.FRAME_TOL = .5 / FPS  # Half a frame tolerance to account for rounding errors
         self.T = T
         self.min_size = int(min_size * T)
 
@@ -62,6 +74,10 @@ class Extractor:
             self.frames_dir, f"{mode}_orig.csv")
         # To be updated with the new segments during processing
         self.main_df = pd.DataFrame(columns=["video_id", "segment_name"])
+
+        self.fps_df_path = os.path.join(
+            self.frames_dir, f"{mode}_fps.csv")
+        self.create_fps_dataframe()
 
         self.subset_path = os.path.join(
             self.annotations_dir, f"{mode}_subset_file_list.txt")
@@ -83,7 +99,7 @@ class Extractor:
         df = self.annotations_df[self.annotations_df['video_id'] == video_id]
         return df
 
-    def create_segments(self, video_id):
+    def create_segments(self, video_id, video_fps):
         """
         Create segments for a video
 
@@ -114,8 +130,7 @@ class Extractor:
             # Check if the new frame is consecutive with the previous one
             # within the tolerance to account for rounding errors
             # If the segment is not too long, add the current frame to the segment
-            if frame_timestamp - segment_end < 1/FPS + self.FRAME_TOL and \
-                    len(segment_frames) < self.T:
+            if frame_timestamp - segment_end < 1.5/video_fps and len(segment_frames) < self.T:
                 segment_end = frame_timestamp
                 segment_frames.append(segment_end)
             # Otherwise, check if the segment is long enough
@@ -140,6 +155,56 @@ class Extractor:
                 "video_id": segment[0], "segment_name": segment_name}
         return segments, entities_df
 
+    def create_fps_dataframe(self):
+        """
+        Create a dataframe with the fps for each video if it does not exist
+        """
+        if os.path.exists(self.fps_df_path):
+            # If the fps dataframe already exists, load it
+            self.fps_df = pd.read_csv(self.fps_df_path)
+            return
+
+        os.makedirs(os.path.dirname(self.fps_df_path), exist_ok=True)
+        loader_path = os.path.join(
+            self.annotations_dir, f"{self.mode}_loader.csv")
+        if not os.path.exists(loader_path):
+            raise FileNotFoundError(
+                f"Loader file {loader_path} does not exist. Please run the loader script first.")
+
+        fps_dict = {}
+        with open(loader_path, "r") as f:
+            lines = f.readlines()
+            for line in lines:
+                fields = line.strip().split()
+                video_id = fields[0]
+                # Video id is of the following format: <video_id>_<4 digit number>_<4 digit number>:<id string>
+                # We need to extract the video id, which might contain underscores
+                video_id = "_".join(video_id.split("_")[:-2])
+                
+                fps = float(fields[2])
+                # If the fps is already in the dictionary, it will be overwritten
+                # with the new value (which should be the same)
+                fps_dict[video_id] = fps
+
+        fps_df = pd.DataFrame.from_dict(
+            fps_dict, orient='index', columns=['fps'])
+        fps_df.index.name = 'video_id'
+        fps_df.reset_index(inplace=True)
+        # Save the fps dataframe to a csv file
+        fps_df.to_csv(self.fps_df_path, index=False)
+        self.fps_df = fps_df
+
+    def get_fps(self, video_id):
+        """
+        Get the fps at which the video was annotated by reading the "{mode}_loader.csv" file
+        """
+        res = self.fps_df[self.fps_df['video_id'] == video_id]
+        if res.empty:
+            raise ValueError(
+                f"FPS not found for video {video_id}.")
+        return res.iloc[0]['fps']
+            
+
     def process_video(self, video):
         """
         Process a video and extract frames and audio
@@ -150,7 +215,8 @@ class Extractor:
         os.makedirs(output_dir, exist_ok=True)
 
         # Create segments for the video
-        segments, entities_df = self.create_segments(video_id)
+        video_fps = self.get_fps(video_id)
+        segments, entities_df = self.create_segments(video_id, video_fps)
 
         # For each segment, extract the audio, frames and labels
         for segment in tqdm(segments):
@@ -167,13 +233,14 @@ class Extractor:
             os.makedirs(labels_dir, exist_ok=True)
 
             # Extract the frames for the segment in the subdirectory
-            extract_frames(video_path, frames_dir, frames)
+            extract_frames(video_path, frames_dir,
+                           frames, precise_seeking=False, fps=video_fps)
 
             # Extract the audio for the segment in the segment directory
             if not os.path.exists(os.path.join(segment_dir, "audio.wav")):
                 extract_audio(video_path,
-                            os.path.join(segment_dir, "audio.wav"),
-                            start_time, end_time)
+                              os.path.join(segment_dir, "audio.wav"),
+                              start_time, end_time)
 
             # Create the labels files
             for i, frame in enumerate(frames):
@@ -202,13 +269,12 @@ class Extractor:
                         # Write the label to the file
                         f.write(
                             f"{label} {x_center} {y_center} {width} {height}\n")
+            # Assert that the labels and frames are the same length
+            assert len(os.listdir(frames_dir)) == len(
+                os.listdir(labels_dir)), f"Frames and labels are not the same length for {video_id} segment {segment_name}"
 
-        # Assert that the labels and frames are the same length
-        assert len(os.listdir(frames_dir)) == len(
-            os.listdir(labels_dir)), f"Frames and labels are not the same length for {video_id} segment {segment_name}"
 
-
-def main(use_subset, T, min_size=0.1):
+def main(use_subset, T, min_size=0.5):
     """
     Main function to extract frames from videos and create annotations
 
@@ -230,7 +296,7 @@ def main(use_subset, T, min_size=0.1):
     and at least min_size*T video frames long.
     """
     for m in MODES:
-        extractor = Extractor(mode=m, FPS=FPS, T=T, min_size=min_size)
+        extractor = Extractor(mode=m, T=T, min_size=min_size)
         video_names = extractor.get_video_names(use_subset)
         for video in video_names:
             # Process the video: extract frames and create annotations
@@ -258,4 +324,4 @@ if __name__ == '__main__':
     use_subset = args.use_subset
     extract_full_frames = args.extract_full_frames
 
-    main(use_subset, T, min_size=0.1)
+    main(use_subset, T, min_size=0.5)

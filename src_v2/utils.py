@@ -2,9 +2,8 @@ import os
 from pathlib import Path
 
 
-FPS = 25
 FS = 16000
-T = 32  # Context length in video frames
+T = 32  # Context length in video frames, for extraction and model
 
 LABELS_TO_INDEX = {
     "NOT_SPEAKING": 0,
@@ -24,9 +23,6 @@ PATHS = {
     "audio_dir": os.path.join(DATASET_DIR, "orig_audios"),
     "annotations_dir": os.path.join(DATASET_DIR, "csv"),
 }
-
-for m in MODES:
-    PATHS[f"{m}_frames_dir"] = os.path.join(PATHS["frames_dir"], m)
 
 # Create directories if they do not exist
 for path in PATHS.values():
