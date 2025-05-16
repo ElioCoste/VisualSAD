@@ -30,6 +30,8 @@ def compute_accuracy(true_label, pred_label):
     """
     Compute classification accuracy
     """
+    true_label = np.array(true_label)
+    pred_label = np.array(pred_label)
     correct_num = (pred_label == true_label).sum()
     return correct_num / len(true_label)
 
@@ -40,8 +42,8 @@ def compute_PR(true_label, pred_score):
 
     tp = 0
     fp = 0
-    precision = []
-    recall = []
+    precision_list = []
+    recall_list = []
     total_positives = np.sum(y_true == 1) + 1e-10  # Avoid division by zero
 
     for i in range(len(y_true)):
@@ -51,9 +53,9 @@ def compute_PR(true_label, pred_score):
             fp += 1
         prec = tp / (tp + fp)
         recall = tp / total_positives
-        precision.append(prec)
-        recall.append(recall)
-    return np.array(precision), np.array(recall)
+        precision_list.append(prec)
+        recall_list.append(recall)
+    return np.array(precision_list), np.array(recall_list)
 
 def compute_ap(precision, recall): #copy from talknet
   """Compute Average Precision according to the definition in VOCdevkit.
@@ -102,8 +104,33 @@ def compute_ap(precision, recall): #copy from talknet
   return average_precision
 
 
-def compute_auc(y_true, y_score):
-    return np.trapz(y_true, y_score)# modify later
+
+def compute_auc(true_label, pred_score):
+    sorted_indices = np.argsort(-np.array(pred_score))
+    y_true = np.array(true_label)[sorted_indices]
+
+    tpr = []
+    fpr = []
+
+    pos_num = np.sum(y_true) +1e-10  # Avoid division by zero
+    neg_num= len(y_true) -pos_num+1e-10 
+
+    tp = 0
+    fp = 0
+
+    for i in range(len(y_true)):
+        if y_true[i] == 1:
+            tp += 1
+        else:
+            fp += 1
+        tpr.append(tp /pos_num)
+        fpr.append(fp /neg_num)
+
+    tpr = np.array(tpr)
+    fpr = np.array(fpr)
+    auc_score = np.trapz(tpr, fpr)
+    return tpr, fpr, auc_score
+
 
 def evaluate_detection(det_boxes, det_labels, det_scores,
                                 true_boxes, true_labels, true_difficulties,threshold=0.5,
@@ -140,7 +167,7 @@ def evaluate_detection(det_boxes, det_labels, det_scores,
     ap = compute_ap(precision, recall)
 
     # AUC
-    
+    tpr, fpr, auc_score = compute_auc(all_true, all_pred_score)
 
     # Accuracy
     accuracy = compute_accuracy(np.array(all_true), np.array(all_pred_label))
@@ -161,4 +188,15 @@ def evaluate_detection(det_boxes, det_labels, det_scores,
         plt.savefig(os.path.join(output_dir, "pr_curve.png"))
         plt.close()
 
-    return ap, accuracy, avg_iou
+    # AUC curve plot
+        os.makedirs(output_dir, exist_ok=True)
+        plt.figure()
+        plt.plot(fpr, tpr, label=f'AUC Curve (AUC={auc_score:.2f})')
+        plt.xlabel("False Positive Rate")
+        plt.ylabel("True Positive Rate")
+        plt.title("ROC Curve")
+        plt.grid(True)
+        plt.legend()
+        plt.savefig(os.path.join(output_dir, "ROC_curve.png"))
+        plt.close()
+    return ap, accuracy, auc_score, avg_iou
