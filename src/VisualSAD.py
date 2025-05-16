@@ -413,6 +413,7 @@ class VisualSAD(nn.Module):
         # print(f"Shape after temporal model: {x.shape}")
 
         # Compute the classification loss
+        loss_cls = self.classification_loss(x.view(-1, x.size(-1)), targets.view(-1))
        
         # print(f"Targets shape: {targets.shape}")
         targets = targets.view(batch_size*n_speakers, self.T, -1)
