@@ -19,6 +19,8 @@ class TPAVI(nn.Module):
         self.conv_theta = nn.Conv3d(C, C, kernel_size=(1, 1, 1))
         self.conv_phi = nn.Conv3d(C, C, kernel_size=(1, 1, 1))
         self.out_conv = nn.Conv3d(C, C, kernel_size=(1, 1, 1))
+        
+        self.__init_weight()
 
     def forward(self, A, V):
         """
@@ -28,7 +30,7 @@ class TPAVI(nn.Module):
             A: Audio features of shape (B, T, dim_audio)
             V: Video features of shape (B, C, T, H, W)
         """
-        B = A.size(0)
+        B = V.size(0)
 
         A = A.flatten(start_dim=1)
         A = self.fc(A)
@@ -51,3 +53,11 @@ class TPAVI(nn.Module):
         res = res.view(*V.size())
 
         return res + V
+
+    def __init_weight(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                torch.nn.init.kaiming_normal_(m.weight)
+            elif isinstance(m, nn.BatchNorm2d):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()

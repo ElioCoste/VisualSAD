@@ -9,7 +9,7 @@ import torchaudio
 from torch.utils.data import Dataset, DataLoader
 
 from torchvision.transforms import Compose, ToTensor, Resize, Grayscale
-from torchaudio.transforms import MelSpectrogram, AmplitudeToDB
+from torchaudio.transforms import MFCC, AmplitudeToDB
 
 from torch.nn.functional import pad
 
@@ -19,9 +19,10 @@ from utils import PATHS, FS
 class AVADataset(Dataset):
     def __init__(self,
                  mode,
-                 C_mel=80,
+                 N_MFCC=80,
                  grayscale=True,
-                 W=112, H=112,
+                 H=112,
+                 W=112,
                  T=32,):
         """
         Args:
@@ -30,26 +31,26 @@ class AVADataset(Dataset):
             visual_transform (callable, optional): Optional transform to be applied on the video frames.
         """
         self.mode = mode
-        self.C_mel = C_mel
+        self.N_MFCC = N_MFCC
         self.grayscale = grayscale
         self.C = 1 if grayscale else 3
-        self.W = W
         self.H = H
+        self.W = W
         self.T = T
 
         if grayscale:
             self.visual_transforms = Compose([
-                Resize((W, H)),
+                Resize((H, W)),
                 Grayscale(num_output_channels=1),
                 ToTensor(),
             ])
-            self.img_shape = (self.W, self.H)
+            self.img_shape = (self.H, self.W)
         else:
             self.visual_transforms = Compose([
-                Resize((W, H)),
+                Resize((H, W)),
                 ToTensor(),
             ])
-            self.img_shape = (self.W, self.H, self.C)
+            self.img_shape = (self.H, self.W, self.C)
 
         self.dataset_dir = PATHS["dataset_dir"]
         self.frames_dir = os.path.join(
@@ -97,7 +98,7 @@ class AVADataset(Dataset):
         Args:
             idx (int): Index of the item to get.
         Returns:
-            mel (torch.Tensor): Mel spectrogram of the audio, shape (4T, C_mel).
+            mel (torch.Tensor): Mel spectrogram of the audio, shape (4T, N_MFCC).
             images (torch.Tensor): Images of the video, shape (n_speakers, T, H, W, C) or (n_speakers, T, H, W) if grayscale.
             targets (torch.Tensor): Targets of the video, shape (n_speakers, T).
         """
@@ -117,7 +118,7 @@ class AVADataset(Dataset):
         images = torch.stack(images, dim=0)
         # Pad the images to T frames
         images = pad(images, (0, 0, 0, 0, 0, 0, 0, self.T -
-                     images.shape[0]), value=0)  # Should be (T, C, W, H)
+                     images.shape[0]), value=0)  # Should be (T, C, H, W)
 
         # Load the targets
         targets = []
@@ -158,15 +159,14 @@ class AVADataset(Dataset):
         # 4T audio frames for T video frames
         self.hop_length = int((FS - 512) / (video_fps * 4 - 1))
         # Apply the audio transformations
-        mel = MelSpectrogram(
+        mel = MFCC(
+            n_mfcc=self.N_MFCC,
             sample_rate=FS,
             hop_length=self.hop_length,
-            n_mels=self.C_mel,
-            n_fft=512,
         )(audio)
-        mel = AmplitudeToDB()(mel).squeeze(0)  # Shape (C_mel, T_mel)
+        mel = AmplitudeToDB()(mel).squeeze(0)  # Shape (N_MFCC, T_mel)
         mel = pad(mel, (0, self.T * 4 - mel.shape[-1]), value=0)  # Pad to 4T
-        mel = mel.permute(1, 0)  # Shape (4T, C_mel)
+        mel = mel.permute(1, 0)  # Shape (4T, N_MFCC)
 
         return mel, images, targets_padded, bboxes_padded
 
@@ -205,7 +205,7 @@ class AVADataLoader(DataLoader):
         images = torch.stack(images, dim=0)
         
         # Stack the images and targets
-        images = images.view(-1, self.dataset.T, self.dataset.C, self.dataset.W, self.dataset.H)
+        images = images.view(-1, self.dataset.T, self.dataset.C, self.dataset.H, self.dataset.W)
         targets = targets_padded.view(-1, self.dataset.T, max_speakers)
         bboxes = bboxes_padded.view(-1, self.dataset.T, max_speakers, 4)
         return mel, images, targets, bboxes

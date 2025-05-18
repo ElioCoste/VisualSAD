@@ -1,7 +1,7 @@
 from detectron2.config import CfgNode as CN
 from detectron2.layers import ShapeSpec
 
-from utils import C, H, W
+from utils import C, H, W, T, N_MFCC
 
 cfg = {
     "MODEL": {

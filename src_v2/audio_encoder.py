@@ -66,7 +66,7 @@ class AudioEncoder(nn.Module):
             x (torch.Tensor): Input audio tensor of shape (B, 1, N_MFCC, 4T).
 
         Returns:
-            torch.Tensor: Output feature tensor of shape (B, T, N_MFCC).
+            torch.Tensor: Output feature tensor of shape (B, T, 128).
         """
         x = self.block1(x)
         x = self.pool1(x)

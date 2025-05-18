@@ -7,6 +7,7 @@ T = 32  # Context length in video frames, for extraction and model
 W = 416  # Width of the video frames
 H = 416  # Height of the video frames
 C = 3   # Number of channels in the video frames (RGB)
+N_MFCC = 13 # Number of mel frequency bands in the audio spectrogram
 
 
 LABELS_TO_INDEX = {
