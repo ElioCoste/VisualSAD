@@ -8,3 +8,4 @@ data_previous
 __pycache__
 data/dataframes/*
 data/extracted/*
+src_v2/detectron2
