@@ -32,13 +32,16 @@ class MainModel(torch.nn.Module):
         # Initialize the fusion modules (TPAVI) for each feature map
         # ouput of the visual encoder
         self.fusion_modules = nn.ModuleList()
-        for feature_map in self.visual_encoder.output_shape().values():
-            self.fusion_modules.append(
-                TPAVI(
-                    C=feature_map.channels,
-                    T=self.T,
-                    dim_audio=self.dim_audio,
-                ))
+        for out_shape in self.visual_encoder.output_shape().values():
+            # Get the output shape of the feature map
+            out_channels = out_shape.channels
+            # Initialize the TPAVI module
+            tpavi = TPAVI(
+                C=out_channels,
+                T=self.T,
+                dim_audio=self.dim_audio
+            )
+            self.fusion_modules.append(tpavi)
 
     def forward_audio_encoder(self, audio):
         """
@@ -61,14 +64,37 @@ class MainModel(torch.nn.Module):
             video (torch.Tensor): Video input of shape (B, T, C, W, H).
 
         Returns:
-            dict: Dictionary containing feature maps from the visual encoder.
+            Dictionary containing feature maps from the visual encoder.
         """
         # Change shape to (B*T, C, W, H)
-        print(video.shape)
+        B = video.size(0)
         video = video.view(
             video.size(0)*video.size(1), *video.size()[2:])
-        print(video.shape)
-        return self.visual_encoder(video)
+        out = self.visual_encoder(video)
+        # Change shape back to (B, T, ...)
+        out = {k: v.view(B, self.T, *v.size()[1:]) for k, v in out.items()}
+        return out
+
+    def forward_fusion(self, feature_maps, audio_features):
+        """
+        Forward pass of the fusion module.
+
+        Args:
+            visual_features (dict): Dictionary containing feature maps from the visual encoder.
+            audio_features (torch.Tensor): Audio features of shape (B, T, 128).
+
+        Returns:
+            Dictionary containing fused features.
+        """
+        fused_features = {}
+        for i, (feature_map_name, feature_map) in enumerate(feature_maps.items()):
+            # Get the corresponding fusion module
+            fusion_module = self.fusion_modules[i]
+            # Fuse the audio features with the visual feature map
+            feature_map = feature_map.transpose(1, 2)
+            fused_feature = fusion_module(audio_features, feature_map)
+            fused_features[feature_map_name] = fused_feature
+        return fused_features
 
     def forward(self, audio, video):
         """
@@ -76,9 +102,11 @@ class MainModel(torch.nn.Module):
 
         Args:
             audio (torch.Tensor): Audio input of shape (B, 4T, N_MFCC).
-            video (torch.Tensor): Video input of shape (B, T, C, W, H).
+            video (torch.Tensor): Video input of shape (B, T, C, H, W).
         """
         visual_features = self.forward_visual_encoder(video)
         audio_features = self.forward_audio_encoder(audio)
-        print(audio_features.shape)
-        return visual_features, audio_features
+
+        fused_features = self.forward_fusion(visual_features, audio_features)
+
+        return visual_features, audio_features, fused_features
