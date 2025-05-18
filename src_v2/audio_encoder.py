@@ -1,4 +1,4 @@
-# Code from LightASD repository: https://github.com/Junhua-Liao/Light-ASD/blob/main/model/Encoder.py
+# Cloned from LightASD repository: https://github.com/Junhua-Liao/Light-ASD/blob/main/model/Encoder.py
 
 
 import torch
@@ -30,7 +30,6 @@ class Audio_Block(nn.Module):
         self.bn_last = nn.BatchNorm2d(out_channels, momentum=0.01, eps=0.001)
 
     def forward(self, x):
-
         x_3 = self.relu(self.bn_m_3(self.m_3(x)))
         x_3 = self.relu(self.bn_t_3(self.t_3(x_3)))
 
@@ -60,7 +59,15 @@ class AudioEncoder(nn.Module):
         self.__init_weight()
 
     def forward(self, x):
+        """
+        Forward pass of the audio encoder.
 
+        Args:
+            x (torch.Tensor): Input audio tensor of shape (B, 1, N_MFCC, 4T).
+
+        Returns:
+            torch.Tensor: Output feature tensor of shape (B, T, N_MFCC).
+        """
         x = self.block1(x)
         x = self.pool1(x)
 
