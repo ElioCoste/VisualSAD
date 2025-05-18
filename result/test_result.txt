@@ -1,0 +1,1 @@
+1. talknet on whole val dataset mAP=0.924, Accuracy=0.922, AUC=0.967
