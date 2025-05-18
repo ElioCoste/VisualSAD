@@ -6,13 +6,15 @@ from detectron2.modeling.backbone.fpn import build_resnet_fpn_backbone
 from audio_encoder import AudioEncoder
 
 from tpavi import TPAVI
+from detection_head import Head
 
 
 class MainModel(torch.nn.Module):
     def __init__(self,
                  input_shape_resnet,
                  resnet_cfg,
-                 T
+                 T,
+                 num_classes,
                  ):
         super(MainModel, self).__init__()
 
@@ -42,6 +44,14 @@ class MainModel(torch.nn.Module):
                 dim_audio=self.dim_audio
             )
             self.fusion_modules.append(tpavi)
+
+        # Initialise the heads for each feature map
+        # output of the fusion modules
+        self.head = Head(
+            nc=num_classes,
+            filters=[
+                out_shape.channels for out_shape in self.visual_encoder.output_shape().values()]
+        )
 
     def forward_audio_encoder(self, audio):
         """
@@ -96,6 +106,25 @@ class MainModel(torch.nn.Module):
             fused_features[feature_map_name] = fused_feature
         return fused_features
 
+    def forward_head(self, fused_features):
+        """
+        Forward pass of the detection heads.
+
+        Args:
+            fused_features (dict): Dictionary containing fused features.
+
+        Returns:
+            Dictionary containing the output of the head
+        """
+        fused_features_reshaped = []
+        for i, feature_map in enumerate(fused_features.values()):
+            # Reshape the feature map to (B*T, C, H, W)
+            B, C, T, H, W = feature_map.size()
+            fused_features_reshaped.append(feature_map.transpose(1, 2).view(
+                B*T, C, H, W))
+        # Pass the feature map through the head
+        return self.head(fused_features_reshaped)
+
     def forward(self, audio, video):
         """
         Forward pass of the model.
@@ -107,6 +136,14 @@ class MainModel(torch.nn.Module):
         visual_features = self.forward_visual_encoder(video)
         audio_features = self.forward_audio_encoder(audio)
 
+        # Fuse the audio features with the visual features
         fused_features = self.forward_fusion(visual_features, audio_features)
+        del audio_features, visual_features # Free up memory
 
-        return visual_features, audio_features, fused_features
+        # Pass the fused features to the head
+        head_output = self.forward_head(fused_features)
+        del fused_features
+        
+        # Post process the output of the heads with soft NMS
+        
+        return 

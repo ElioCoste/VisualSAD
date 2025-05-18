@@ -18,6 +18,8 @@ LABELS_TO_INDEX = {
 
 INDEX_TO_LABELS = {v: k for k, v in LABELS_TO_INDEX.items()}
 
+NUM_CLASSES = len(LABELS_TO_INDEX)
+
 DATASET_DIR = os.path.join(Path.cwd().parent, "data")
 
 MODES = ["train", "val", "test"]
