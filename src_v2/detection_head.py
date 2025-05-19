@@ -3,7 +3,6 @@
 import torch
 import torch.nn as nn
 
-
 def make_anchors(x, strides, offset=0.5):
     assert x is not None
     anchor_tensor, stride_tensor = [], []
@@ -48,7 +47,7 @@ class DFL(nn.Module):
         self.c1 = c1
 
     def forward(self, x):
-        b, c, a = x.shape
+        b, _, a = x.shape
         return self.conv(x.view(b, 4, self.c1, a).transpose(2, 1).softmax(1)).view(b, 4, a)
 
 
@@ -91,6 +90,7 @@ class Head(torch.nn.Module):
 
         self.anchors, self.strides = (i.transpose(0, 1)
                                       for i in make_anchors(x, self.stride))
+
         x = torch.cat([i.view(x[0].shape[0], self.no, -1) for i in x], dim=2)
         box, cls = x.split(split_size=(4 * self.ch, self.nc), dim=1)
 
@@ -98,8 +98,31 @@ class Head(torch.nn.Module):
         a = self.anchors.unsqueeze(0) - a
         b = self.anchors.unsqueeze(0) + b
         box = torch.cat(tensors=((a + b) / 2, b - a), dim=1)
-
         return torch.cat(tensors=(box * self.strides, cls.sigmoid()), dim=1)
+
+    def postprocess(self, preds, max_det):
+        """
+        Post-processes YOLO model predictions.
+
+        Args:
+            preds (torch.Tensor): Raw predictions with shape (batch_size, num_anchors, 4 + nc) with last dimension
+                format [x, y, w, h, class_probs].
+            max_det (int): Maximum detections per image.
+            nc (int, optional): Number of classes. Default: 80.
+
+        Returns:
+            (torch.Tensor): Processed predictions with shape (batch_size, min(max_det, num_anchors), 6) and last
+                dimension format [x, y, w, h, max_class_prob, class_index].
+        """
+        batch_size, anchors, _ = preds.shape  # i.e. shape(16,8400,84)
+        boxes, scores = preds.split([4, self.nc], dim=-1)
+        index = scores.amax(
+            dim=-1).topk(min(max_det, anchors))[1].unsqueeze(-1)
+        boxes = boxes.gather(dim=1, index=index.repeat(1, 1, 4))
+        scores = scores.gather(dim=1, index=index.repeat(1, 1, self.nc))
+        scores, index = scores.flatten(1).topk(min(max_det, anchors))
+        i = torch.arange(batch_size)[..., None]  # batch indices
+        return torch.cat([boxes[i, index // self.nc], scores[..., None], (index % self.nc)[..., None].float()], dim=-1)
 
     def __init_weight(self):
         for m in self.modules():

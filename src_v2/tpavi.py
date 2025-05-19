@@ -52,7 +52,7 @@ class TPAVI(nn.Module):
         res = self.out_conv(res)
         res = res.view(*V.size())
 
-        return res + V
+        return res + V, A
 
     def __init_weight(self):
         for m in self.modules():

@@ -14,7 +14,13 @@ class MainModel(torch.nn.Module):
                  input_shape_resnet,
                  resnet_cfg,
                  T,
+                 N_MFCC,
                  num_classes,
+                 max_det=1000,
+                 contrastive_loss=None,
+                 av_loss=None,
+                 reg_loss=None,
+                 cls_loss=None,
                  ):
         super(MainModel, self).__init__()
 
@@ -22,6 +28,8 @@ class MainModel(torch.nn.Module):
         self.W = input_shape_resnet.width
         self.H = input_shape_resnet.height
         self.C = input_shape_resnet.channels
+        self.N_MFCC = N_MFCC
+        self.max_det = max_det
 
         # Initialize the visual encoder (ResNet18 + FPN model)
         self.visual_encoder = build_resnet_fpn_backbone(
@@ -52,6 +60,9 @@ class MainModel(torch.nn.Module):
             filters=[
                 out_shape.channels for out_shape in self.visual_encoder.output_shape().values()]
         )
+        self.forward(torch.zeros(
+            1, 4*self.T, self.N_MFCC), torch.zeros(
+            1, self.T, self.C, self.W, self.H))  # Dummy input to initialize strides
 
     def forward_audio_encoder(self, audio):
         """
@@ -71,12 +82,12 @@ class MainModel(torch.nn.Module):
         Forward pass of the visual encoder.
 
         Args:
-            video (torch.Tensor): Video input of shape (B, T, C, W, H).
+            video (torch.Tensor): Video input of shape (B, T, C, H, W).
 
         Returns:
             Dictionary containing feature maps from the visual encoder.
         """
-        # Change shape to (B*T, C, W, H)
+        # Change shape to (B*T, C, H, W)
         B = video.size(0)
         video = video.view(
             video.size(0)*video.size(1), *video.size()[2:])
@@ -85,7 +96,7 @@ class MainModel(torch.nn.Module):
         out = {k: v.view(B, self.T, *v.size()[1:]) for k, v in out.items()}
         return out
 
-    def forward_fusion(self, feature_maps, audio_features):
+    def forward_fusion(self, feature_maps, audio_features, compute_loss=False):
         """
         Forward pass of the fusion module.
 
@@ -96,14 +107,21 @@ class MainModel(torch.nn.Module):
         Returns:
             Dictionary containing fused features.
         """
+        if compute_loss:
+            loss = 0
         fused_features = {}
         for i, (feature_map_name, feature_map) in enumerate(feature_maps.items()):
             # Get the corresponding fusion module
             fusion_module = self.fusion_modules[i]
             # Fuse the audio features with the visual feature map
             feature_map = feature_map.transpose(1, 2)
-            fused_feature = fusion_module(audio_features, feature_map)
+            fused_feature, A = fusion_module(
+                audio_features, feature_map, compute_loss=compute_loss)
+            if compute_loss:
+                loss += self.av_loss(A, feature_map)
             fused_features[feature_map_name] = fused_feature
+        if compute_loss:
+            return fused_features, loss
         return fused_features
 
     def forward_head(self, fused_features):
@@ -120,14 +138,53 @@ class MainModel(torch.nn.Module):
         for i, feature_map in enumerate(fused_features.values()):
             # Reshape the feature map to (B*T, C, H, W)
             B, C, T, H, W = feature_map.size()
-            fused_features_reshaped.append(feature_map.transpose(1, 2).view(
+            fused_features_reshaped.append(feature_map.transpose(1, 2).reshape(
                 B*T, C, H, W))
         # Pass the feature map through the head
         return self.head(fused_features_reshaped)
 
+    def forward_train(self, audio, video, targets_box, targets_cls):
+        """
+        Forward pass of the model during training.
+        Computes the losses at different stages of the model.
+        """
+        visual_features = self.forward_visual_encoder(video)
+        audio_features = self.forward_audio_encoder(audio)
+        loss_nce = self.contrastive_loss(
+            audio_features, visual_features)
+
+        del audio_features, visual_features
+
+        fused_features, loss_av = self.forward_fusion(
+            visual_features, audio_features, compute_loss=True)
+
+        # Pass the fused features to the head
+        head_output = self.forward_head(fused_features)
+        del fused_features
+
+        # Compute the bounding box regression loss and classification loss
+        box, cls = torch.split(
+            head_output, [4*self.head.ch, self.head.nc], dim=1)
+
+        # Compute the box regression loss
+        loss_box_reg = self.reg_loss(
+            box, targets_box, self.head.strides, self.head.anchors)
+
+        # Compute the classification loss
+        loss_cls = self.cls_loss(cls, targets_cls)
+
+        return {
+            'loss_nce': loss_nce,
+            'loss_av': loss_av,
+            'loss_box_reg': loss_box_reg,
+            'loss_cls': loss_cls
+        }
+
     def forward(self, audio, video):
         """
         Forward pass of the model.
+        This method is used for inference and returns the post-processed output
+        of the head. The model will not compute the loss during inference.
 
         Args:
             audio (torch.Tensor): Audio input of shape (B, 4T, N_MFCC).
@@ -137,13 +194,16 @@ class MainModel(torch.nn.Module):
         audio_features = self.forward_audio_encoder(audio)
 
         # Fuse the audio features with the visual features
-        fused_features = self.forward_fusion(visual_features, audio_features)
-        del audio_features, visual_features # Free up memory
+        fused_features = self.forward_fusion(
+            visual_features, audio_features, compute_loss=False)
+        del audio_features, visual_features  # Free up memory
 
         # Pass the fused features to the head
         head_output = self.forward_head(fused_features)
         del fused_features
-        
+
         # Post process the output of the heads with soft NMS
-        
-        return 
+        post_processed_output = self.head.postprocess(
+            head_output.transpose(-1, -2), max_det=self.max_det)
+
+        return post_processed_output
