@@ -6,7 +6,7 @@ import pandas as pd
 import requests
 from tqdm import tqdm
 
-from utils import PATHS, MODES
+from config import PATHS, MODES
 
 
 class AVADataset:

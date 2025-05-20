@@ -19,7 +19,7 @@ class TPAVI(nn.Module):
         self.conv_theta = nn.Conv3d(C, C, kernel_size=(1, 1, 1))
         self.conv_phi = nn.Conv3d(C, C, kernel_size=(1, 1, 1))
         self.out_conv = nn.Conv3d(C, C, kernel_size=(1, 1, 1))
-        
+
         self.__init_weight()
 
     def forward(self, A, V):
@@ -52,7 +52,7 @@ class TPAVI(nn.Module):
         res = self.out_conv(res)
         res = res.view(*V.size())
 
-        return res + V, A
+        return res + V
 
     def __init_weight(self):
         for m in self.modules():

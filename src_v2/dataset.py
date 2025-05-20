@@ -9,21 +9,21 @@ import torchaudio
 from torch.utils.data import Dataset, DataLoader
 
 from torchvision.transforms import Compose, ToTensor, Resize, Grayscale
-from torchaudio.transforms import MFCC, AmplitudeToDB
+from torchaudio.transforms import MelSpectrogram, AmplitudeToDB
 
 from torch.nn.functional import pad
 
-from utils import PATHS, FS
+from config import PATHS, FS
 
 
 class AVADataset(Dataset):
     def __init__(self,
                  mode,
-                 N_MFCC=80,
-                 grayscale=True,
-                 H=112,
-                 W=112,
-                 T=32,):
+                 N_MFCC,
+                 C,
+                 H,
+                 W,
+                 T):
         """
         Args:
             mode (str): One of 'train', 'val', or 'test'.
@@ -32,13 +32,13 @@ class AVADataset(Dataset):
         """
         self.mode = mode
         self.N_MFCC = N_MFCC
-        self.grayscale = grayscale
-        self.C = 1 if grayscale else 3
+        self.C = C
+        self.grayscale = self.C == 1
         self.H = H
         self.W = W
         self.T = T
 
-        if grayscale:
+        if self.grayscale:
             self.visual_transforms = Compose([
                 Resize((H, W)),
                 Grayscale(num_output_channels=1),
@@ -128,13 +128,17 @@ class AVADataset(Dataset):
         for target_path in os.listdir(target_dir):
             target, bbox = self.load_target(
                 os.path.join(target_dir, target_path))
-            # Target is of shape (n_speakers, T_seg) to be reshaped to (T, n_speakers)
-            # Label is of shape (n_speakers, T_seg, 4), to be reshaped to (T, n_speakers, 4)
             targets.append(torch.tensor(target))
             bboxes.append(torch.tensor(bbox))
 
         # Get the max number of speakers in the segment
         max_speakers = max([len(target) for target in targets])
+        
+        print("Targets:", len(targets))
+        print("Bboxes:", len(bboxes))
+        print("Max speakers:", max_speakers)
+        print("Targets shape:", targets[0].shape)
+        print("Bboxes shape:", bboxes[0].shape)
 
         # Pad the targets and bboxes to (T, max_speakers, -1)
         targets_padded = torch.zeros((self.T, max_speakers), dtype=torch.long)
@@ -159,8 +163,8 @@ class AVADataset(Dataset):
         # 4T audio frames for T video frames
         self.hop_length = int((FS - 512) / (video_fps * 4 - 1))
         # Apply the audio transformations
-        mel = MFCC(
-            n_mfcc=self.N_MFCC,
+        mel = MelSpectrogram(
+            n_mels=self.N_MFCC,
             sample_rate=FS,
             hop_length=self.hop_length,
         )(audio)
@@ -203,10 +207,10 @@ class AVADataLoader(DataLoader):
         # Stack the mel and images
         mel = torch.stack(mel, dim=0)
         images = torch.stack(images, dim=0)
-        
+
         # Stack the images and targets
-        images = images.view(-1, self.dataset.T, self.dataset.C, self.dataset.H, self.dataset.W)
+        images = images.view(-1, self.dataset.T,
+                             self.dataset.C, self.dataset.H, self.dataset.W)
         targets = targets_padded.view(-1, self.dataset.T, max_speakers)
         bboxes = bboxes_padded.view(-1, self.dataset.T, max_speakers, 4)
         return mel, images, targets, bboxes
-

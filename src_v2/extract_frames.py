@@ -5,7 +5,7 @@ import subprocess
 import pandas as pd
 from tqdm import tqdm
 
-from utils import PATHS, MODES, T, FS, LABELS_TO_INDEX
+from config import PATHS, MODES, T, FS, LABELS_TO_INDEX
 
 
 def extract_audio(input_video, output_audio, start_time, end_time, fs=FS):
