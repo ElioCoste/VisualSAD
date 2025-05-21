@@ -133,12 +133,6 @@ class AVADataset(Dataset):
 
         # Get the max number of speakers in the segment
         max_speakers = max([len(target) for target in targets])
-        
-        print("Targets:", len(targets))
-        print("Bboxes:", len(bboxes))
-        print("Max speakers:", max_speakers)
-        print("Targets shape:", targets[0].shape)
-        print("Bboxes shape:", bboxes[0].shape)
 
         # Pad the targets and bboxes to (T, max_speakers, -1)
         targets_padded = torch.zeros((self.T, max_speakers), dtype=torch.long)

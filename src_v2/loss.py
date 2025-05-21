@@ -21,9 +21,21 @@ class AVLoss(nn.Module):
         Compute the audio-visual loss.
 
         audio_features: Tensor of shape (B, T, dim_audio)
-        fused_features: Tensor of shape (B, T, dim_fused)
+        fused_features: List of tensors of shape (B, C, T, h_i, w_i)
         """
-        return 0
+        # Compute the KL divergence between the audio and fused features
+        loss = 0.0
+        for i in range(len(fused_features)):
+            # Reshape the audio features to match the spatial dimensions of the fused features
+            audio_features_i = audio_features.unsqueeze(-1).unsqueeze(-1).expand(
+                -1, -1, -1, fused_features[i].size(3), fused_features[i].size(4))
+            # Compute the KL divergence
+            loss += F.kl_div(
+                F.softmax(fused_features[i], dim=1),
+                F.log_softmax(audio_features_i, dim=1),
+                reduction='batchsum'
+            )
+        return loss
 
 
 class ContrastiveLoss(nn.Module):
@@ -229,4 +241,4 @@ class v8DetectionLoss:
                 pred_distri, pred_bboxes, anchor_points, target_bboxes, target_scores, target_scores_sum, fg_mask
             )
 
-        return loss * batch_size, loss.detach()  # loss(box, cls, dfl)
+        return loss * batch_size, pred_bboxes, pred_scores, target_bboxes, target_scores, fg_mask
