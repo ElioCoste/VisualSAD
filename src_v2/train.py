@@ -4,7 +4,7 @@ from loss import v8DetectionLoss, ContrastiveLoss, AVLoss
 from main_model import MainModel
 
 from dataset import AVADataset, AVADataLoader
-from config import resnet_cfg, resnet_input_shape, T, N_MFCC, NUM_CLASSES, C, H, W
+from config import T, N_MFCC, NUM_CLASSES, C, H, W
 
 
 class Trainer:
@@ -18,10 +18,17 @@ class Trainer:
         self.av_loss = AVLoss()
         self.detection_loss = v8DetectionLoss(model, tal_topk=10)
 
+        self.lambda_nce = 0.1
+        self.lambda_av = 0.1
+        self.lambda_det = 1.0
+        self.lambda_box = 1.0
+        self.lambda_cls = 1.0
+        self.lambda_dfl = 1.0
+
     def do_one_epoch(self, dataloader):
         self.model.train()
         total_loss = 0.0
-        for i, (audio, video, targets, labels) in enumerate(dataloader):
+        for i, (audio, video, targets, bboxes) in enumerate(dataloader):
             # Audio: (B, 4T, N_MFCC)
             # Video: (B, T, C, H, W)
             # Targets: (B, T, max_speakers)
@@ -30,6 +37,7 @@ class Trainer:
             audio = audio.to(self.device)
             video = video.to(self.device)
             targets = targets.to(self.device)
+            bboxes = bboxes.to(self.device)
 
             # Forward pass
 
@@ -40,33 +48,48 @@ class Trainer:
             del audio
             video_features = self.model.forward_visual_encoder(video)
             del video
-            
+
             # Compute contrastive loss
             # Select the audio and video features at frames where at least one
             # speaker is active (i.e., the sum of the target labels is greater than 0)
-            active_frames = targets.sum(dim=-1) > 0  # (B, T)
-            loss_nce = self.contrastive_loss(
-                audio_features, video_features, active_frames)
+            # active_frames = bboxes.sum(dim=-1) > 0  # (B, T)
+            loss_nce = 0
+            # self.contrastive_loss(
+            #     audio_features, video_features, active_frames)
 
             # Multimodal fusion
             fused_features = self.model.forward_fusion(
                 video_features, audio_features)
-            del video_features
-            # Compute audio-visual loss
-            loss_av = self.av_loss(
-                audio_features, fused_features, targets, labels)
-            del audio_features
 
             # Detection head
             head_out = self.model.forward_head(fused_features)
-            del fused_features
-            
+
+            # Reshape targets to match the expected input shape for the detection loss
+            # Get the targets that are not padded
+            non_padded = targets >= 0
+            batch_idx = torch.arange(
+                targets.size(0)*targets.size(1), device=targets.device)
+            batch_idx = batch_idx.repeat_interleave(targets.size(2))
+            targets = targets[non_padded].flatten()
+            batch_idx = batch_idx[non_padded.flatten()]
+            bboxes = bboxes[non_padded].flatten(end_dim=-2)
+            batch = {
+                "batch_idx": batch_idx,
+                "cls": targets,
+                "bboxes": bboxes
+            }
+
             # Compute detection loss
-            loss_det, _ = self.detection_loss(head_out, targets, labels)
+            loss_det, fg_mask = \
+                self.detection_loss(head_out, batch)
             # Weighted sum of detection loss:
             loss_det = self.lambda_box * \
-                loss_det[:, 0] + self.lambda_cls * \
-                loss_det[:, 1] + self.lambda_dfl * loss_det[:, 2]
+                loss_det[0] + self.lambda_cls * \
+                loss_det[1] + self.lambda_dfl * loss_det[2]
+
+            # Compute AV loss
+            loss_av = self.av_loss(
+                audio_features, fused_features, fg_mask)
 
             # Total loss
             total_loss = self.lambda_nce * loss_nce + \
@@ -99,8 +122,7 @@ def main():
         train_dataset, batch_size=2, shuffle=True, num_workers=0)
 
     model = MainModel(
-        resnet_cfg, resnet_input_shape,
-        T, N_MFCC, NUM_CLASSES, max_det=10)
+        T, C, H, W, N_MFCC, NUM_CLASSES, max_det=10)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = model.to(device)

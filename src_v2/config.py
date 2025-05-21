@@ -1,6 +1,3 @@
-from detectron2.config import CfgNode as CN
-from detectron2.layers import ShapeSpec
-
 import os
 from pathlib import Path
 
@@ -16,7 +13,7 @@ N_MFCC = 13  # Number of mel frequency bands in the audio spectrogram
 LABELS_TO_INDEX = {
     "NOT_SPEAKING": 0,
     "SPEAKING_AUDIBLE": 1,
-    "SPEAKING_NOT_AUDIBLE": 2,
+    "SPEAKING_NOT_AUDIBLE": 1,
 }
 
 INDEX_TO_LABELS = {v: k for k, v in LABELS_TO_INDEX.items()}
@@ -38,41 +35,3 @@ PATHS = {
 for path in PATHS.values():
     if not os.path.exists(path):
         os.makedirs(path)
-
-
-resnet_cfg = {
-    "MODEL": {
-        "FPN": {
-            "IN_FEATURES": ["res2", "res3", "res4", "res5"],
-            "OUT_CHANNELS": 128,
-            "NORM": "BN",
-            "FUSE_TYPE": "sum",
-        },
-        "BACKBONE": {
-            "FREEZE_AT": 2,
-        },
-        "RESNETS": {
-            "OUT_FEATURES": ["res2", "res3", "res4", "res5"],
-            "DEPTH": 18,
-            "NUM_GROUPS": 1,
-            "WIDTH_PER_GROUP": 1,
-            "STEM_OUT_CHANNELS": 1,
-            "RES2_OUT_CHANNELS": 64,
-            "STRIDE_IN_1X1": True,
-            "RES5_DILATION": 1,
-            "DEFORM_ON_PER_STAGE": [False, False, False, False],
-            "DEFORM_MODULATED": False,
-            "DEFORM_NUM_GROUPS": [],
-            "NORM": "BN"
-        }
-    }
-}
-
-
-resnet_cfg = CN(resnet_cfg)
-
-resnet_input_shape = ShapeSpec(
-    channels=C,
-    height=H,
-    width=W,
-)

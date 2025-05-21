@@ -16,26 +16,24 @@ class AVLoss(nn.Module):
     def __init__(self, ):
         super(AVLoss, self).__init__()
 
-    def forward(self, audio_features, fused_features):
+    def forward(self, audio_features, fused_features, fg_mask):
         """
         Compute the audio-visual loss.
 
         audio_features: Tensor of shape (B, T, dim_audio)
         fused_features: List of tensors of shape (B, C, T, h_i, w_i)
+        fg_mask: Tensor of shape (B, T) mask indicating the predicted foreground
         """
+        B, C, T, _, _ = fused_features[0].shape
         # Compute the KL divergence between the audio and fused features
-        loss = 0.0
-        for i in range(len(fused_features)):
-            # Reshape the audio features to match the spatial dimensions of the fused features
-            audio_features_i = audio_features.unsqueeze(-1).unsqueeze(-1).expand(
-                -1, -1, -1, fused_features[i].size(3), fused_features[i].size(4))
-            # Compute the KL divergence
-            loss += F.kl_div(
-                F.softmax(fused_features[i], dim=1),
-                F.log_softmax(audio_features_i, dim=1),
-                reduction='batchsum'
-            )
-        return loss
+        V = torch.cat([x.transpose(1, 2).reshape(B, T, C, -1) for x in fused_features], dim=-1)
+        M = V * fg_mask.view(B, T, 1, -1)
+        A = audio_features.unsqueeze(-1).expand(-1, -1, -1, M.shape[-1])
+        return F.kl_div(
+            F.log_softmax(A, dim=-1),
+            F.softmax(M, dim=-1),
+            reduction="batchmean"
+        )
 
 
 class ContrastiveLoss(nn.Module):
@@ -241,4 +239,4 @@ class v8DetectionLoss:
                 pred_distri, pred_bboxes, anchor_points, target_bboxes, target_scores, target_scores_sum, fg_mask
             )
 
-        return loss * batch_size, pred_bboxes, pred_scores, target_bboxes, target_scores, fg_mask
+        return loss * batch_size, fg_mask

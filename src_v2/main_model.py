@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from detectron2.modeling.backbone.fpn import build_resnet_fpn_backbone
+from torchvision.models.detection.backbone_utils import resnet_fpn_backbone
 
 from audio_encoder import AudioEncoder
 
@@ -11,9 +11,7 @@ from detection_head import Head
 
 class MainModel(torch.nn.Module):
     def __init__(self,
-                 input_shape_resnet,
-                 cfg_resnet,
-                 T,
+                 T, C, H, W,
                  N_MFCC,
                  num_classes,
                  max_det=25,
@@ -21,27 +19,32 @@ class MainModel(torch.nn.Module):
         super(MainModel, self).__init__()
 
         self.T = T
-        self.W = input_shape_resnet.width
-        self.H = input_shape_resnet.height
-        self.C = input_shape_resnet.channels
+        self.C = C
+        self.H = H
+        self.W = W
         self.N_MFCC = N_MFCC
         self.max_det = max_det
         self.num_classes = num_classes
 
-        # Initialize the visual encoder (ResNet18 + FPN model)
-        self.visual_encoder = build_resnet_fpn_backbone(
-            cfg_resnet, input_shape_resnet)
+        # Initialize the visual encoder (ResNet18 backbone + FPN)
+        self.visual_encoder = resnet_fpn_backbone(
+            backbone_name='resnet18', trainable_layers=5, weights=None)
 
         # Initialize the audio encoder
         self.audio_encoder = AudioEncoder()
         self.dim_audio = 128  # Constant defined in the AudioEncoder block
 
+        # Dummy input to compute the output shape of the feature maps
+        # output of the visual encoder
+        dummy_input = torch.zeros(1, self.C, self.H, self.W)
+        dummy_output = list(self.visual_encoder(dummy_input).values())
+
         # Initialize the fusion modules (TPAVI) for each feature map
         # ouput of the visual encoder
         self.fusion_modules = nn.ModuleList()
-        for out_shape in self.visual_encoder.output_shape().values():
+        for fmap in dummy_output:
             # Get the output shape of the feature map
-            out_channels = out_shape.channels
+            out_channels = fmap.shape[1]
             # Initialize the TPAVI module
             tpavi = TPAVI(
                 C=out_channels,
@@ -55,7 +58,8 @@ class MainModel(torch.nn.Module):
         self.head = Head(
             nc=num_classes,
             filters=[
-                out_shape.channels for out_shape in self.visual_encoder.output_shape().values()]
+                fmap.shape[1] for fmap in dummy_output
+            ],
         )
 
         self.head.stride = [4, 8, 16, 32, 64]
@@ -99,9 +103,9 @@ class MainModel(torch.nn.Module):
         B = video.size(0)
         video = video.view(
             video.size(0)*video.size(1), *video.size()[2:])
-        out = self.visual_encoder(video)
+        out = list(self.visual_encoder(video).values())
         # Change shape back to (B, T, ...)
-        out = {k: v.view(B, self.T, *v.size()[1:]) for k, v in out.items()}
+        out = [fmap.view(B, self.T, *fmap.size()[1:]) for fmap in out]
         return out
 
     def forward_fusion(self, feature_maps, audio_features):
@@ -115,15 +119,15 @@ class MainModel(torch.nn.Module):
         Returns:
             Dictionary containing fused features.
         """
-        fused_features = {}
-        for i, (feature_map_name, feature_map) in enumerate(feature_maps.items()):
+        fused_features = []
+        for i, fmap in enumerate(feature_maps):
             # Get the corresponding fusion module
             fusion_module = self.fusion_modules[i]
             # Fuse the audio features with the visual feature map
-            feature_map = feature_map.transpose(1, 2)
+            fmap = fmap.transpose(1, 2)
             fused_feature = fusion_module(
-                audio_features, feature_map)
-            fused_features[feature_map_name] = fused_feature
+                audio_features, fmap)
+            fused_features.append(fused_feature)
         return fused_features
 
     def forward_head(self, fused_features):
@@ -137,7 +141,7 @@ class MainModel(torch.nn.Module):
             Dictionary containing the output of the head
         """
         fused_features_reshaped = []
-        for i, feature_map in enumerate(fused_features.values()):
+        for i, feature_map in enumerate(fused_features):
             # Reshape the feature map to (B*T, C, H, W)
             B, C, T, H, W = feature_map.size()
             fused_features_reshaped.append(feature_map.transpose(1, 2).reshape(

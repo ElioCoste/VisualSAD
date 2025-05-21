@@ -135,8 +135,8 @@ class AVADataset(Dataset):
         max_speakers = max([len(target) for target in targets])
 
         # Pad the targets and bboxes to (T, max_speakers, -1)
-        targets_padded = torch.zeros((self.T, max_speakers), dtype=torch.long)
-        bboxes_padded = torch.zeros(
+        targets_padded = -torch.ones((self.T, max_speakers), dtype=torch.long)
+        bboxes_padded = -torch.ones(
             (self.T, max_speakers, 4), dtype=torch.float)
         for i, (target, bbox) in enumerate(zip(targets, bboxes)):
             targets_padded[i, :target.shape[0]] = target
@@ -208,3 +208,38 @@ class AVADataLoader(DataLoader):
         targets = targets_padded.view(-1, self.dataset.T, max_speakers)
         bboxes = bboxes_padded.view(-1, self.dataset.T, max_speakers, 4)
         return mel, images, targets, bboxes
+
+
+
+class DummyDataset(Dataset):
+    def __init__(self, N_MFCC, C, H, W, T):
+        self.N_MFCC = N_MFCC
+        self.C = C
+        self.H = H
+        self.W = W
+        self.T = T
+
+    def __len__(self):
+        return 1000  # Dummy length
+
+    def __getitem__(self, idx):
+        mel = torch.randn(self.T*4, self.N_MFCC)
+        images = torch.randn(self.T, self.C, self.H, self.W)
+        targets = torch.randint(0, 2, (self.T, 5))
+        bboxes = torch.randn(self.T, 5, 4)
+        return mel, images, targets, bboxes
+    
+class DummyDataLoader(DataLoader):
+    def __init__(self, dataset, batch_size=1, shuffle=False, num_workers=0):
+        super().__init__(dataset, batch_size=batch_size,
+                         shuffle=shuffle, num_workers=num_workers)
+    def collate_fn(self, batch):
+        mel, images, targets, bboxes = zip(*batch)
+        # Stack the mel and images
+        mel = torch.stack(mel, dim=0)
+        images = torch.stack(images, dim=0)
+        # Stack the targets and bboxes
+        targets = torch.stack(targets, dim=0)
+        bboxes = torch.stack(bboxes, dim=0)
+        return mel, images, targets, bboxes
+    
