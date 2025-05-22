@@ -134,7 +134,7 @@ class AVADataset(Dataset):
         # Get the max number of speakers in the segment
         max_speakers = max([len(target) for target in targets])
 
-        # Pad the targets and bboxes to (T, max_speakers, -1)
+        # Pad the targets and bboxes to (T, max_speakers, -1) with -1
         targets_padded = -torch.ones((self.T, max_speakers), dtype=torch.long)
         bboxes_padded = -torch.ones(
             (self.T, max_speakers, 4), dtype=torch.float)
@@ -191,9 +191,10 @@ class AVADataLoader(DataLoader):
         mel, images, targets, bboxes = zip(*batch)
         max_speakers = max([target.shape[1] for target in targets])
         # Pad the targets and bboxes to (batch_size, T, max_speakers, -1)
-        targets_padded = torch.zeros(
+        # with -1
+        targets_padded = -torch.ones(
             (len(batch), self.dataset.T, max_speakers), dtype=torch.long)
-        bboxes_padded = torch.zeros(
+        bboxes_padded = -torch.ones(
             (len(batch), self.dataset.T, max_speakers, 4), dtype=torch.float)
         for i, (target, bbox) in enumerate(zip(targets, bboxes)):
             targets_padded[i, :, :target.shape[1]] = target
@@ -208,7 +209,6 @@ class AVADataLoader(DataLoader):
         targets = targets_padded.view(-1, self.dataset.T, max_speakers)
         bboxes = bboxes_padded.view(-1, self.dataset.T, max_speakers, 4)
         return mel, images, targets, bboxes
-
 
 
 class DummyDataset(Dataset):
@@ -228,11 +228,13 @@ class DummyDataset(Dataset):
         targets = torch.randint(0, 2, (self.T, 5))
         bboxes = torch.randn(self.T, 5, 4)
         return mel, images, targets, bboxes
-    
+
+
 class DummyDataLoader(DataLoader):
     def __init__(self, dataset, batch_size=1, shuffle=False, num_workers=0):
         super().__init__(dataset, batch_size=batch_size,
                          shuffle=shuffle, num_workers=num_workers)
+
     def collate_fn(self, batch):
         mel, images, targets, bboxes = zip(*batch)
         # Stack the mel and images
@@ -242,4 +244,3 @@ class DummyDataLoader(DataLoader):
         targets = torch.stack(targets, dim=0)
         bboxes = torch.stack(bboxes, dim=0)
         return mel, images, targets, bboxes
-    

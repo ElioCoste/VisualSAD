@@ -1,4 +1,5 @@
 import torch
+from tqdm import tqdm
 
 from loss import v8DetectionLoss, ContrastiveLoss, AVLoss
 from main_model import MainModel
@@ -28,7 +29,7 @@ class Trainer:
     def do_one_epoch(self, dataloader):
         self.model.train()
         total_loss = 0.0
-        for i, (audio, video, targets, bboxes) in enumerate(dataloader):
+        for i, (audio, video, targets, bboxes) in tqdm(enumerate(dataloader)):
             # Audio: (B, 4T, N_MFCC)
             # Video: (B, T, C, H, W)
             # Targets: (B, T, max_speakers)
@@ -113,18 +114,23 @@ class Trainer:
 
 
 def main():
+    print("Loading dataset...")
     train_dataset = AVADataset(
         "train", N_MFCC,
         C, H, W, T
     )
-
     train_loader = AVADataLoader(
         train_dataset, batch_size=2, shuffle=True, num_workers=0)
+    print("Done.")
 
+    print("Initializing model...")
     model = MainModel(
         T, C, H, W, N_MFCC, NUM_CLASSES, max_det=10)
+    print("Done.")
+    print(f"Model parameters: {sum(p.numel() for p in model.parameters())}")
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Running on device: {device}")
     model = model.to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
@@ -132,6 +138,8 @@ def main():
         optimizer, step_size=10, gamma=0.1)
 
     trainer = Trainer(model, optimizer, scheduler, device)
+
+    print("Starting training...")
     trainer.do_train(train_loader, epochs=50, save_dir="checkpoints")
 
 
