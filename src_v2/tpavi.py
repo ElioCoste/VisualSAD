@@ -26,9 +26,12 @@ class TPAVI(nn.Module):
         """
         Forward pass of the TPAVI module with batched inputs.
 
-        Input:
+        Args:
             A: Audio features of shape (B, T, dim_audio)
             V: Video features of shape (B, C, T, H, W)
+
+        Returns:
+            torch.Tensor: Output feature tensor of shape (B, C, T, H, W)
         """
         B = V.size(0)
 

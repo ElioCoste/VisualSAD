@@ -29,7 +29,8 @@ class Trainer:
     def do_one_epoch(self, dataloader):
         self.model.train()
         total_loss = 0.0
-        for i, (audio, video, targets, bboxes) in tqdm(enumerate(dataloader)):
+        bar = tqdm(range(len(dataloader)), desc="Training")
+        for i, (audio, video, targets, bboxes) in enumerate(dataloader):
             # Audio: (B, 4T, N_MFCC)
             # Video: (B, T, C, H, W)
             # Targets: (B, T, max_speakers)
@@ -101,6 +102,12 @@ class Trainer:
             self.optimizer.step()
             self.scheduler.step()
             total_loss += total_loss.item()
+
+            # Print loss in the progress bar
+            bar.set_postfix(
+                loss=total_loss.item(), av=loss_av.item(), det=loss_det.item()
+            )
+            bar.update(1)
 
         return total_loss / len(dataloader)
 

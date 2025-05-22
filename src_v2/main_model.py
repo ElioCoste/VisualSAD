@@ -15,6 +15,7 @@ class MainModel(torch.nn.Module):
                  N_MFCC,
                  num_classes,
                  max_det=25,
+                 fusion_heads=2
                  ):
         super(MainModel, self).__init__()
 
@@ -42,7 +43,12 @@ class MainModel(torch.nn.Module):
         # Initialize the fusion modules (TPAVI) for each feature map
         # ouput of the visual encoder
         self.fusion_modules = nn.ModuleList()
-        for fmap in dummy_output:
+        for i, fmap in enumerate(dummy_output):
+            # The first 3 feature maps are not used for TPAVI
+            # as they are too big
+            if i <= len(dummy_output) - fusion_heads:
+                self.fusion_modules.append(None)
+                continue
             # Get the output shape of the feature map
             out_channels = fmap.shape[1]
             # Initialize the TPAVI module
@@ -121,6 +127,10 @@ class MainModel(torch.nn.Module):
         """
         fused_features = []
         for i, fmap in enumerate(feature_maps):
+            if self.fusion_modules[i] is None:
+                # Skip the first 3 feature maps as they are too big
+                fused_features.append(fmap.transpose(1, 2))
+                continue
             # Get the corresponding fusion module
             fusion_module = self.fusion_modules[i]
             # Fuse the audio features with the visual feature map
