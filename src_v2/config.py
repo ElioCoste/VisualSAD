@@ -3,7 +3,7 @@ from pathlib import Path
 
 
 FS = 16000
-T = 5  # Context length in video frames, for extraction and model
+T = 10  # Context length in video frames, for extraction and model
 W = 416  # Width of the video frames
 H = 416  # Height of the video frames
 C = 3   # Number of channels in the video frames (RGB)

@@ -56,9 +56,6 @@ class AVADataset(Dataset):
         self.frames_dir = os.path.join(
             self.dataset_dir, "extracted", mode)
 
-        self.annotations_df = pd.read_csv(
-            os.path.join(PATHS["annotations_dir"], f"{mode}_orig.csv"))
-
         self.main_df_path = os.path.join(
             self.frames_dir, f"{mode}_orig.csv")
         self.main_df = pd.read_csv(self.main_df_path)

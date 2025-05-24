@@ -88,11 +88,9 @@ class Trainer:
             loss_det = self.lambda_box * \
                 loss_det[0] + self.lambda_cls * \
                 loss_det[1] + self.lambda_dfl * loss_det[2]
-
             # Compute AV loss
             loss_av = self.av_loss(
                 audio_features, fused_features, fg_mask)
-
             # Total loss
             total_loss = self.lambda_nce * loss_nce + \
                 self.lambda_av * loss_av + self.lambda_det * loss_det
@@ -108,16 +106,35 @@ class Trainer:
                 loss=total_loss.item(), av=loss_av.item(), det=loss_det.item()
             )
             bar.update(1)
-
+        bar.close()
         return total_loss / len(dataloader)
 
-    def do_train(self, dataloader, epochs, save_dir):
+    def do_train(self, train_loader, val_loader, epochs, save_dir):
+        train_loss = []
+        val_loss = []
         for epoch in range(epochs):
-            total_loss = self.do_one_epoch(dataloader)
-            print(f"Epoch {epoch+1}/{epochs}, Loss: {total_loss:.4f}")
+            print(f"Epoch {epoch+1}/{epochs}")
+            loss_ = self.do_one_epoch(train_loader)
+            print(f"Epoch {epoch+1}/{epochs}, Loss: {loss_:.4f}")
             # Save model checkpoint
             torch.save(self.model.state_dict(),
                        f"{save_dir}/model_epoch_{epoch+1}.pth")
+            if epoch % 2 == 0:
+                # Validate the model
+                self.model.eval()
+                with torch.no_grad():
+                    val_loss_ = self.do_one_epoch(val_loader)
+                    print(f"Validation Loss: {val_loss_:.4f}\n")
+                    val_loss.append(val_loss_)
+            train_loss.append(loss_)
+
+        # Save training and validation loss
+        with open(f"{save_dir}/train_loss.txt", "w") as f:
+            for l in train_loss:
+                f.write(f"{l}\n")
+        with open(f"{save_dir}/val_loss.txt", "w") as f:
+            for l in val_loss:
+                f.write(f"{l}\n")
 
 
 def main():
@@ -128,6 +145,12 @@ def main():
     )
     train_loader = AVADataLoader(
         train_dataset, batch_size=2, shuffle=True, num_workers=0)
+    val_dataset = AVADataset(
+        "val", N_MFCC,
+        C, H, W, T
+    )
+    val_loader = AVADataLoader(
+        val_dataset, batch_size=2, shuffle=False, num_workers=0)
     print("Done.")
 
     print("Initializing model...")
@@ -147,7 +170,8 @@ def main():
     trainer = Trainer(model, optimizer, scheduler, device)
 
     print("Starting training...")
-    trainer.do_train(train_loader, epochs=50, save_dir="checkpoints")
+    trainer.do_train(train_loader, val_loader,
+                     epochs=50, save_dir="checkpoints")
 
 
 if __name__ == "__main__":

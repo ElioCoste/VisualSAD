@@ -73,14 +73,21 @@ class Extractor:
         self.main_df_path = os.path.join(
             self.frames_dir, f"{mode}_orig.csv")
         # To be updated with the new segments during processing
-        self.main_df = pd.DataFrame(columns=["video_id", "segment_name"])
-
+        self.main_df_list = [] # For faster appending when constructing the segments 
         self.fps_df_path = os.path.join(
             self.frames_dir, f"{mode}_fps.csv")
         self.create_fps_dataframe()
-
         self.subset_path = os.path.join(
             self.annotations_dir, f"{mode}_subset_file_list.txt")
+
+    def save_main_dataframe(self):
+        """
+        Save the main dataframe to a csv file
+        """
+        os.makedirs(os.path.dirname(self.main_df_path), exist_ok=True)
+        self.main_df = pd.DataFrame(self.main_df_list, columns=["video_id", "segment_name"])
+        self.main_df.to_csv(self.main_df_path, index=False)
+        print(f"Main dataframe saved to {self.main_df_path}")
 
     def get_video_names(self, use_subset):
         videos = set(os.listdir(self.video_dir))
@@ -151,8 +158,8 @@ class Extractor:
         # Add the segment to the main dataframe
         for segment in segments:
             segment_name = f"{segment[1]}_{segment[2]}"
-            self.main_df.loc[len(self.main_df)] = {
-                "video_id": segment[0], "segment_name": segment_name}
+            self.main_df_list.append({
+                "video_id": segment[0], "segment_name": segment_name})
         return segments, entities_df
 
     def create_fps_dataframe(self):
@@ -180,7 +187,7 @@ class Extractor:
                 # Video id is of the following format: <video_id>_<4 digit number>_<4 digit number>:<id string>
                 # We need to extract the video id, which might contain underscores
                 video_id = "_".join(video_id.split("_")[:-2])
-                
+
                 fps = float(fields[2])
                 # If the fps is already in the dictionary, it will be overwritten
                 # with the new value (which should be the same)
@@ -203,7 +210,6 @@ class Extractor:
             raise ValueError(
                 f"FPS not found for video {video_id}.")
         return res.iloc[0]['fps']
-            
 
     def process_video(self, video):
         """
@@ -307,8 +313,7 @@ def main(use_subset, T, min_size=0.5):
             extractor.process_video(video)
 
         # Save the main dataframe
-        extractor.main_df.to_csv(extractor.main_df_path, index=False)
-        print(f"Main dataframe saved to {extractor.main_df_path}")
+        extractor.save_main_dataframe()
 
 
 if __name__ == '__main__':

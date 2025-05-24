@@ -32,7 +32,7 @@ class AVLoss(nn.Module):
         return F.kl_div(
             F.log_softmax(A, dim=-1),
             F.softmax(M, dim=-1),
-            reduction="batchmean"
+            reduction="sum"
         )
 
 

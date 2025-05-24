@@ -10,6 +10,11 @@ from detection_head import Head
 
 
 class MainModel(torch.nn.Module):
+    """
+    MainModel is the main model class that combines the visual and audio encoders,
+    fusion modules, and detection heads.
+    """
+
     def __init__(self,
                  T, C, H, W,
                  N_MFCC,
@@ -33,10 +38,10 @@ class MainModel(torch.nn.Module):
 
         # Initialize the audio encoder
         self.audio_encoder = AudioEncoder()
-        self.dim_audio = 128  # Constant defined in the AudioEncoder block
+        self.dim_audio = 128  # Constant defined in the AudioEncoder module
 
-        # Dummy input to compute the output shape of the feature maps
-        # output of the visual encoder
+        # Dummy input to compute the shape of the feature maps
+        # output by the visual encoder
         dummy_input = torch.zeros(1, self.C, self.H, self.W)
         dummy_output = list(self.visual_encoder(dummy_input).values())
 
@@ -103,7 +108,8 @@ class MainModel(torch.nn.Module):
             video (torch.Tensor): Video input of shape (B, T, C, H, W).
 
         Returns:
-            Dictionary containing feature maps from the visual encoder.
+            List containing the feature maps from the visual encoder.
+            Each feature map is of shape (B, T, C_a, h_i, w_i).
         """
         # Change shape to (B*T, C, H, W)
         B = video.size(0)
@@ -123,7 +129,8 @@ class MainModel(torch.nn.Module):
             audio_features (torch.Tensor): Audio features of shape (B, T, 128).
 
         Returns:
-            Dictionary containing fused features.
+            List containing the fused feature maps.
+            Each fused feature map is of shape (B, T, C_a, h_i, w_i).
         """
         fused_features = []
         for i, fmap in enumerate(feature_maps):
@@ -148,7 +155,7 @@ class MainModel(torch.nn.Module):
             fused_features (dict): Dictionary containing fused features.
 
         Returns:
-            Dictionary containing the output of the head
+            List containing the outputs of the heads.
         """
         fused_features_reshaped = []
         for i, feature_map in enumerate(fused_features):
@@ -162,12 +169,14 @@ class MainModel(torch.nn.Module):
     def forward(self, audio, video):
         """
         Forward pass of the model.
-        This method is used for inference and returns the post-processed output
-        of the head.
+        This method is used for inference only and returns the post-processed 
+        output of the detection heads.
 
         Args:
             audio (torch.Tensor): Audio input of shape (B, 4T, N_MFCC).
             video (torch.Tensor): Video input of shape (B, T, C, H, W).
+        Returns:
+            torch.Tensor: Post-processed output of the detection heads, with max_det detections per image.
         """
         if self.training:
             raise Warning(
